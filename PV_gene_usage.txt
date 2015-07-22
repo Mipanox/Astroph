@@ -1,0 +1,85 @@
+---This is the usage of PV_gene.py---
+
+#########################
+--Description--
+
+This file aims to provide a assistant tool to CASA's viewer and miriad's velplot.
+You'll need a fits file for your data cube.
+
+Import this file and load data cube as the class object DS.
+
+Optional arguments:
+- PV center (default [0.,0.]:
+===============
+ceneter = [x_0, y_0]
+===============
+  in unit of arcsec.
+
+- PV cut position angle (default 0.):
+===============
+pa = angle
+===============
+  in unit of degrees.
+
+- PV cut half-length (extends to both sides from the center):
+===============
+length = length
+===============
+  in unit of arcsec.
+
+- velocity range (default all range):
+===============
+vrange = [v_i, v_f] # v_i = initial channel v; v_f = final channel v
+===============
+  in unit of km/s.
+
+- noise level ; contour level
+  (default automatically determined by matplotlib):
+===============
+rms = rms # if rms=n sigma, then contour level in steps of n sigma
+===============
+  in unit according to your data cube unit of intensity. 
+
+- gray scale colormap (default True):
+===============
+gray = True / False # False yields only contour lines no colorscale
+===============
+  True or False/
+  
+
+#########################
+--Prerequisite packages--
+
+(1) @keflavich's pvextractor: https://github.com/keflavich/pvextractor
+ (including astropy, pyds)
+ 
+(2) numpy and matplotlib for data manipulation and display
+
+
+
+########################
+--Example use--
+
+================
+# run in ipython interactively
+ipython
+
+# set datacube 'yourfitsfile.fits' as object dt
+# set velocity from 4.4 to 6.0 km/s
+# PV cut along P.A.=0 degrees, with total length 10 arcsec
+# plot with contours only
+dt = PV_gene.DS('yourfitsfile.fits', gray=False, vrange=[4.4,6.0], length=5.)
+
+# plot the resulting PV diagram
+dt.pvshow()
+
+# extract the PV array (as np.array)
+dt.pvdraw()
+
+================
+
+########################
+--Future plan--
+(1) add multidirection PV cuts
+(2) selectable units (e.g. vrange in channel, center in pixel, etc.)
+
