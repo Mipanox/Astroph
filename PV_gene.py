@@ -28,8 +28,8 @@ class DS(object):
         #how many " per pixel
         cv = round(np.abs(self.header["cdelt1"]*3600),5)
         #absolute pixel value
-        ca = [self.cr[0]+self.header["crpix1"]-1, \
-              self.cr[1]+self.header["crpix1"]-1]
+        ca = [self.cr[0]/cv+self.header["crpix1"]-1, \
+              self.cr[1]/cv+self.header["crpix2"]-1]
         bm = ( int(ca[0]-self.ln/cv*np.sin(np.radians(self.pa))), \
                int(ca[1]+self.ln/cv*np.cos(np.radians(self.pa))) )
         tp = ( int(ca[0]+self.ln/cv*np.sin(np.radians(self.pa))), \
@@ -38,37 +38,44 @@ class DS(object):
 
     def pvdraw(self):
     ###--generate PV diagram---###
+        if self.header["naxis"] == 3: da = self.data
+        else                        : da = self.data[0]
+        
         if self.vr == None:
-            pv = extract_pv_slice(self.data[0], Path(self.slc()))
+            pv = extract_pv_slice(da, Path(self.slc()))
         else:
             vii = int((self.vr[0] - self.header["crval3"]/1000.) \
-                      /(self.header["cdelt3"]/1000.))
+                      /(self.header["cdelt3"]/1000.))-1
             vff = int((self.vr[1] - self.header["crval3"]/1000.) \
-                      /(self.header["cdelt3"]/1000.))
-            pv = extract_pv_slice(self.data[0][vii:vff], Path(self.slc()))
+                      /(self.header["cdelt3"]/1000.))-1
+            pv = extract_pv_slice(da[vii:vff], Path(self.slc()))
         return pv.data
 
     def pvshow(self):
     ###--show PV diagram---##
         cp = plt.cm.get_cmap("gray")
 
+        y = np.linspace(self.ln   , -self.ln  , self.pvdraw().shape[1])
+        
         if self.vr == None:
-            #gray scale map
+            x = np.linspace(self.header["crval3"]/1000., \
+                            self.header["crval3"]/1000.* \
+                            self.header["naxis%s" %(self.header["naxis"])], \
+                            self.pvdraw().shape[0])
             if self.gs == False:
                 if self.rms == None:
-                    plt.contour(self.pvdraw(), colors='k')
+                    plt.contour(y,xself.pvdraw(), colors='k')
                 else:
                     lv = np.linspace(-3*self.rms, 15*self.rms, 19)
-                    plt.contour(self.pvdraw(), colors='k', levels=lv)
+                    plt.contour(y,xself.pvdraw(), colors='k', levels=lv)
             else:
                 if self.rms == None:
-                    plt.contourf(self.pvdraw(), cmap=cp)
+                    plt.contourf(y,xself.pvdraw(), cmap=cp)
                 else:
                     lv = np.linspace(-3*self.rms, 15*self.rms, 19)
-                    plt.contourf(self.pvdraw(), levels=lv, cmap=cp)
+                    plt.contourf(y,xself.pvdraw(), levels=lv, cmap=cp)
         else:
             x = np.linspace(self.vr[0], self.vr[1], self.pvdraw().shape[0])
-            y = np.linspace(self.ln   , -self.ln  , self.pvdraw().shape[1])
             if self.gs == False:
                 if self.rms == None:
                     plt.contour(y,x,self.pvdraw(), colors='k')
