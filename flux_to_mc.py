@@ -7,9 +7,8 @@ from astropy.io import fits
 
 class ds_flux(object):
     def __init__(self,line,T_ex,area,\
-                 dis=None,bmaj=None,bmin=None, \
-                 cell_x=None,cell_y=None,linewidth=None, \
-                 vrange=None,dataset=None,flux_T=None):
+                 dis=None,beam=None,cell=None,linewidth=None, \
+                 vrange=None,dataset=None,flux=None):
         self.Tx  = T_ex
         self.dis = dis
         self.vr  = vrange
@@ -38,13 +37,13 @@ class ds_flux(object):
             self.cy   = self.header["cdelt1"]*3600.
             self.lw   = self.header["cdelt3"]/1000. # in km/s
         else:
-            self.bmaj = bmaj
-            self.bmin = bmin
-            self.cx   = cell_x
-            self.cy   = cell_y
+            self.bmaj = beam[0]
+            self.bmin = beam[1]
+            self.cx   = cell[0]
+            self.cy   = cell[1]
             self.lw   = linewidth
 
-        if flux_T: self.fx = np.array(flux_T)
+        if flux_T: self.fx = np.array(flux)
         else:      self.fx = self.flux()
 
     def polyarea(self):
