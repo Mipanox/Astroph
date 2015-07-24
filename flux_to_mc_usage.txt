@@ -1,0 +1,151 @@
+---This is the usage of flux_to_mc.py---
+
+#########################
+--Disclaimer--
+No guarantee for correctness of various physical quantities.
+e.g. X-factor for CO lines maybe personally dependent.
+
+The theory of the calculation is available in flux_to_mc.pdf. 
+
+#########################
+--Description--
+
+This code enables one to calculate the following (of a molecular line observation):
+
+flux (Jy/beam)/ flux density (Jy)/ Brightness Temperature (K)/
+optical depth/ column density (cm^-2)
+
+and estimate mass (M_sun) giving excitation temperature and distance to the source.
+
+One will need a fits file for your data cube or
+one may provide a list of flux (in Jy/beam) together with area contained (" x ").
+
+Import this file and set your data as the class object ds_flux.
+
+
+* You should assign these parameters:
+- Line species (no default):
+===============
+line = 'line name' # now available lines: 'c18o(2-1)', '13co(3-2)', '12co(3-2)'.
+===============
+
+- Excitation temperature (no default):
+===============
+T_ex = excitation T
+===============
+  in unit of Kelvin.
+
+- Area to be computed (no default):
+===============
+# if using fits file:
+area = polygon vertices coordinates
+
+# if using existing flux list:
+area = area of the region contributing to the flux
+===============
+  as a list [[x1,y1],[x2,y2],...,[xn,yn]], in pixel number
+   # (xn,yn) need not equal (x1,y1)
+  or in unit of arcsec^2.
+
+
+* if using flux instead of data cube, the following are also required:
+- beam, cell size:
+===============
+beam = (bmaj,bmin)
+# bmaj   = FWHM of the major axis of the beam,
+# bmin   = FWHM of the minor axis of the beam,
+cell = (cell_x,cell_y)
+# cell_x = cell size in x-axis,
+# cell_y = cell size in y-axis
+===============
+  in unit of arcsec.
+
+- linewidth:
+===============
+linewidth = channel separation
+===============
+  in unit of km/s.
+
+* optional arguments: (not applicable for given flux)
+- velocity range (default all channels):
+===============
+vrange = [vi, vf] # vi = initial velocity (lower bound) ; vf = upper bound 
+===============
+  in unit of km/s.
+  
+
+#########################
+--Prerequisite packages--
+
+(1) astropy for accessing data cubes
+(2) numpy for data manipulation and calculation
+(3) OpenCV for high-efficient polygon mask algorithm
+    (can be installed via homebrew)
+
+
+########################
+--Example use--
+
+================
+# run in ipython interactively
+ipython
+
+### data cube example ###
+# set datacube 'yourfitsfile.fits' as object dt
+# set velocity from 4.4 to 6.0 km/s
+# line species = 'c18o(2-1)'
+# excitation temperature = 15K
+# select region by specifying polygon: [[200,200],[400,200],[400,400],[400,200]]
+ln = 'c18o(2-1)'
+vr = [4.4,6.0]
+pn = [[200,200],[400,200],[400,400],[400,200]]
+tx = 15.
+dt = flux_to_mc.ds_flux('yourfitsfile.fits',line=ln,vrange=vr,area=pn,T_ex=tx)
+
+# show flux (array)
+dt.flux()
+
+# show flux density (array)
+dt.flux_density()
+
+# show brightness temperature (array)
+dt.rj_tb()
+
+# show individual optical depth (array)
+dt.tau()
+
+# show total optical depth along the l.o.s. (scalar)
+dt.tau_tot()
+
+# show column density of that species (scalar)
+dt.col_d_tot()
+
+# show total gas mass (scalar)
+dt.mass()
+
+### flux list example ###
+# set flux = your flux list or array (1D)
+# line species = '12co(3-2)'
+# excitation temperature = 30K
+# region contained = 5000 arcsec^2
+# beam size = 4.5" x 2.7"
+# cell size = 0.2" x 0.2"
+# linewidth = 0.5 km/s
+flux = [ your flux data list ]
+ln = '12co(2-3)'
+tx = 30.
+aa = 5000.
+bm = (4.5,2.7)
+cl = (0.2,0.2)
+lw = 0.5
+dt = flux_to_mc.ds_flux(flux=flux,line=ln,T_ex=tx,area=aa,\
+                        beam=bm,cell=cl,linewidth=lw)
+
+================
+
+########################
+--Future plan--
+(1) apply for single-dish flux in units of Ta*
+(2) more lines
+(3) selectable units (e.g. vrange in channel, polygon in arcsec, etc.)
+
