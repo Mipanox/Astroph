@@ -44,9 +44,11 @@ class DS(object):
         if self.vr == None:
             pv = extract_pv_slice(da, Path(self.slc()))
         else:
-            vii = int((self.vr[0] - self.header["crval3"]/1000.) \
+            vii = int(self.header["crpix3"]+
+                     (self.vr[0] - self.header["crval3"]/1000.) \
                       /(self.header["cdelt3"]/1000.))-1
-            vff = int((self.vr[1] - self.header["crval3"]/1000.) \
+            vff = int(self.header["crpix3"]+
+                     (self.vr[1] - self.header["crval3"]/1000.) \
                       /(self.header["cdelt3"]/1000.))-1
             pv = extract_pv_slice(da[vii:vff], Path(self.slc()))
         return pv.data
