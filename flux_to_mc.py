@@ -6,7 +6,7 @@ from astropy.utils.data import get_readable_fileobj
 from astropy.io import fits
 
 class ds_flux(object):
-    def __init__(self,line,T_ex,area,sd=False,eta=None, \
+    def __init__(self,line,T_ex,area=None,sd=False,eta=None, \
                  dis=None,beam=None,cell=None,linewidth=None, \
                  vrange=None,dataset=None,flux=None):
         self.Tx  = T_ex
@@ -50,13 +50,15 @@ class ds_flux(object):
 
     def _poaa(self):
     ###--return polygon area in pixel number--###
+        if self.header["naxis"] == 3: da = self.data
+        else                        : da = self.data[0]
+            
         #how many arcsec squared in one pixel
         ap = self.cx * self.cy
-        if type(self.pg) == int: return self.pg / ap
+        if self.pg == None:     return da.shape[-1]*da.shape[-2]
+        elif len(self.pg) == 1: return self.pg / ap
         else:
         #mask of the polygon
-            if self.header["naxis"] == 3: da = self.data
-            else                        : da = self.data[0]
             mk = np.zeros((da.shape[-1],da.shape[-2]))
             km = np.ones ((da.shape[-1],da.shape[-2]))
             cv2.fillConvexPoly(mk, np.array(self.pg), 1)
@@ -73,16 +75,9 @@ class ds_flux(object):
 
     def _sm(self):
     ###--sum of pixel values--###
-        #mask of the polygon
         if self.header["naxis"] == 3: da = self.data
         else                        : da = self.data[0]
-        mk = np.zeros((da.shape[-1],da.shape[-2]))
-        cv2.fillConvexPoly(mk, np.array(self.pg), 1)
 
-        mk  = mk.astype(np.bool)
-        out = np.zeros_like(da[0])
-        
-        fx = []
         if self.vr:
             vii = int(self.header["crpix3"]+ \
                      (self.vr[0]-self.header["crval3"]/1000.) \
@@ -93,10 +88,21 @@ class ds_flux(object):
             rg = range(vii,vff)
         else: rg = range(da.shape[-3])
 
-        #sum
-        for zz in rg:
-            out[mk] = da[zz][mk]
-            fx.append(np.sum(out))
+        fx = []
+        if self.pg and len(self.pg) > 1:
+        #mask of the polygon
+            mk = np.zeros((da.shape[-1],da.shape[-2]))
+            cv2.fillConvexPoly(mk, np.array(self.pg), 1)
+            
+            mk  = mk.astype(np.bool)
+            out = np.zeros_like(da[0])
+
+            for zz in rg:
+                out[mk] = da[zz][mk]
+                fx.append(np.sum(out))
+        else:
+            for zz in rg:
+                fx.append(np.sum(da[zz]))
         return np.array(fx)
             
     def flux(self):
@@ -162,14 +168,18 @@ class ds_flux(object):
         
         n_u = 8*np.pi*self.ln[self.ll][2]**2/(c.value*100.)**2* \
               self.f(ex)/self.ln[self.ll][0]* \
-              np.sum(self.rj_tb())*lwd
+              np.sum(self.tau())*lw
+        #alternatively, one may use d(nu)/nu_0 = dv/c in linewidth:
+        #n_u = 8*np.pi*self.ln[self.ll][2]/(c.value*100.)*\
+        #      self.f(ex)/self.ln[self.ll][0]* \
+        #      np.sum(self.tau())*lwd
 
         #partition function, approximated by integral
         eu = k_B.value*self.Tx/h.value/self.ln[self.ll][1]
         zz = eu/(self.ln[self.ll][3]*2+1)* \
-            np.exp(self.ln[self.ll][3]*(self.ln[self.ll][3]+1)/eu)
-
-        return n_u*zz*10000.
+             np.exp(self.ln[self.ll][3]*(self.ln[self.ll][3]+1)/eu)
+        
+        return n_u*zz
 
     def mass(self):
     ###--return total mass (assuming mean molecular weight = 2.7 per H_2--###
