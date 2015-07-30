@@ -7,8 +7,8 @@ import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 
 class DS(object):
-    def __init__(self,dataset,center=[0.,0.],pa=0.,\
-                 length=10.,vrange=None,rms=None,gray=True):
+    def __init__(self,dataset,center=[0.,0.],pa=0.,length=10.,
+                 vrange=None,rms=None,gray=True,level=[1.,10.]):
         self.ds  = dataset
         self.cr  = center
         self.pa  = pa
@@ -16,6 +16,7 @@ class DS(object):
         self.vr  = vrange
         self.rms = rms
         self.gs  = gray
+        self.lv  = level
         
         with get_readable_fileobj(dataset, cache=True) as f:
             self.fitsfile = fits.open(f)
@@ -55,10 +56,12 @@ class DS(object):
 
     def pvshow(self):
     ###--show PV diagram---##
-        cp = plt.cm.get_cmap("gray")
+        cp = plt.cm.get_cmap("Greys")
 
         y = np.linspace(self.ln   , -self.ln  , self.pvdraw().shape[1])
         
+        bm,bmm = self.lv[0],self.lv[0]*self.rms
+        tp,tpp = self.lv[1],self.lv[1]*self.rms
         if self.vr == None:
             x = np.linspace(self.header["crval3"]/1000., \
                             self.header["crval3"]/1000.* \
@@ -68,13 +71,13 @@ class DS(object):
                 if self.rms == None:
                     plt.contour(y,xself.pvdraw(), colors='k')
                 else:
-                    lv = np.linspace(-3*self.rms, 15*self.rms, 19)
+                    lv = np.linspace(bmm,tpp,tp-bm+1)
                     plt.contour(y,xself.pvdraw(), colors='k', levels=lv)
             else:
                 if self.rms == None:
                     plt.contourf(y,xself.pvdraw(), cmap=cp)
                 else:
-                    lv = np.linspace(-3*self.rms, 15*self.rms, 19)
+                    lv = np.linspace(bmm,tpp,tp-bm+1)
                     plt.contourf(y,xself.pvdraw(), levels=lv, cmap=cp)
         else:
             x = np.linspace(self.vr[0], self.vr[1], self.pvdraw().shape[0])
@@ -82,13 +85,13 @@ class DS(object):
                 if self.rms == None:
                     plt.contour(y,x,self.pvdraw(), colors='k')
                 else:
-                    lv = np.linspace(-3*self.rms, 15*self.rms, 19)
+                    lv = np.linspace(bmm,tpp,tp-bm+1)
                     plt.contour(y,x,self.pvdraw(), colors='k', levels=lv)
             else:
                 if self.rms == None:
                     plt.contourf(y,x,self.pvdraw(), cmap=cp)
                 else:
-                    lv = np.linspace(-3*self.rms, 15*self.rms, 19)
+                    lv = np.linspace(bmm,tpp,tp-bm+1)
                     plt.contourf(y,x,self.pvdraw(), levels=lv, cmap=cp)
         plt.ylabel("velocity (km/s)")
         plt.xlabel("position offset (arcsec)")
