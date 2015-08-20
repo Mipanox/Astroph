@@ -69,16 +69,16 @@ class DS(object):
                             self.pvdraw().shape[0])
             if self.gs == False:
                 if self.rms == None:
-                    plt.contour(y,xself.pvdraw(), colors='k')
+                    plt.contour(y,x,self.pvdraw(), colors='k')
                 else:
                     lv = np.linspace(bmm,tpp,tp-bm+1)
-                    plt.contour(y,xself.pvdraw(), colors='k', levels=lv)
+                    plt.contour(y,x,self.pvdraw(), colors='k', levels=lv)
             else:
                 if self.rms == None:
-                    plt.contourf(y,xself.pvdraw(), cmap=cp)
+                    plt.contourf(y,x,self.pvdraw(), cmap=cp)
                 else:
                     lv = np.linspace(bmm,tpp,tp-bm+1)
-                    plt.contourf(y,xself.pvdraw(), levels=lv, cmap=cp)
+                    plt.contourf(y,x,self.pvdraw(), levels=lv, cmap=cp)
         else:
             x = np.linspace(self.vr[0], self.vr[1], self.pvdraw().shape[0])
             if self.gs == False:
