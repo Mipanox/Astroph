@@ -91,7 +91,7 @@ class ds_flux(object):
         fx = []
         if self.pg and len(self.pg) > 1:
         #mask of the polygon
-            mk = np.zeros((da.shape[-1],da.shape[-2]))
+            mk = np.zeros((da.shape[-2],da.shape[-1]))
             cv2.fillConvexPoly(mk, np.array(self.pg), 1)
             
             mk  = mk.astype(np.bool)
