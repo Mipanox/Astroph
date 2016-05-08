@@ -1,3 +1,7 @@
+'''
+see the ipython notebook in ~/Desktop/coding_temp for usage and development
+'''
+
 import os
 from astropy.utils.data import get_readable_fileobj
 from astropy.io import fits
@@ -23,6 +27,7 @@ class SF(object):
     def gd(self):
         gx,gy = np.gradient(self.data[0],1,1)
         return gx,gy
+    
     def grad(self):
         gx,gy = self.gd()
         
@@ -53,16 +58,15 @@ class SF(object):
         hdu = fits.PrimaryHDU(gf)
         hdu.writeto('test_gf.fits')
 
-        ## test drawing
         os.system('fits in=test_gf.fits out=test_gf op=xyin')
         os.system('cgdisp in=test_mom0,test_gf \
                    device=test_gf.ps/vcps slev=a,3.8 type=c,p \
                    levs1=3,6,9,12,15,18,21,24,30,33,36,39,42,45,48,51,54,60 labtyp=relpix \
                    nxy=1,1 \
-                   range=0,360,lin,6 options=relax,wedge,blacklab cols1=0 olay=gd.vg')
+                   range=0,180,lin,6 options=relax,wedge,blacklab cols1=0 olay=gd.vg')
     
     def sf(self): # default 180 directionless
-        a  = self.grad()
+        a = self.grad()
         bn = self.bn
         od = self.od
         
@@ -122,9 +126,11 @@ class SF(object):
         j = 1
         for i in idx:
             if i==1: continue
-            sf_.append(np.sum((sf[j:i]**(1./od)*ct[j:i])/np.sum(ct[j:i]))) # weighted average of sf
+            sf_.append(np.sum((sf[j:i]*ct[j:i])/np.sum(ct[j:i]))**(1./od)) # weighted average of sf
             ln_.append(np.sum(ls[j:i]*ct[j:i])/np.sum(ct[j:i])) # weighted average of ls
             j = i
+        sf_.append(np.sum((sf[j:]*ct[j:])/np.sum(ct[j:]))**(1./od)) # don't forget the last bin
+        ln_.append(np.sum(ls[j:]*ct[j:])/np.sum(ct[j:]))
         
         return sf_,ln_
     
@@ -142,6 +148,8 @@ class SF(object):
         plt.ylim(0,90.)
         plt.title('%s: Structure Function for directionless gradients (Order %s)' %(self.nm,int(self.od)))
         pp.savefig()
+        
+        # note the zeros at largest scales for gd appear because gd isn't defined at boarders
     
         pp.close()
         
