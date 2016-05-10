@@ -1,8 +1,9 @@
 '''
 see the ipython notebook in ~/Desktop/coding_temp for usage and development
-Update: 2016/05/10:
+Updated: 2016/05/10:
  - handling of nan values
  - added pol and difference (default 180)
+ - drawing
 '''
 
 import os
@@ -14,11 +15,12 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 
 class SF(object):
-    def __init__(self,name,od,bn,gd=None,pol=None,choice='directionless'):
+    def __init__(self,name,od,bn,gd=None,pol=None,polp=None,choice='directionless',**kwargs):
         self.nm = name
         self.od = od
         self.bn = bn
         self.ch = choice
+        self.__dict__.update(kwargs)
         
         if gd:
             with get_readable_fileobj(gd, cache=True) as f:
@@ -34,6 +36,13 @@ class SF(object):
                 self.header   = self.fitsfile[0].header
         else: self.po = np.zeros([0])
         # default grd and po to zero arrays with size 0 if not given
+            
+        if polp:
+            with get_readable_fileobj(polp, cache=True) as e:
+                self.fitsfile = fits.open(e)
+                self.pop      = self.fitsfile[0].data
+                self.header   = self.fitsfile[0].header
+        else: self.pop = np.ones(self.po.shape)*0.07 # set to 7% percentage
     
     def gd(self):
         gx,gy = np.gradient(self.grd,1,1)
@@ -49,31 +58,80 @@ class SF(object):
         elif self.ch == 'full':          return pa360
         
     def draw(self):
-        if self.grd.size: # if grd != None
+        g  = self.grd
+        b  = self.po + 90.
+        pp = self.pop
+        
+        def cp(ar1,ar2): return np.minimum((ar1-ar2)%180.,(ar2-ar1)%180.)
+        def cgdisp(self,ds,mode,ang):
+            os.system('rm -rf %s %s' %(self.nm+mode+'fits',self.nm+mode))
+
+            hdu = fits.PrimaryHDU(ds)
+            hdu.writeto('%s' %(self.nm+mode+'fits'))
+
+            os.system('fits in=%s out=%s op=xyin' %(self.nm+mode+'fits',self.nm+mode))
+            os.system('cgdisp in=%s,%s \
+                       device=%s.ps/vcps slev=a,%s type=c,p \
+                       levs1=3,6,9,12,15,18,21,24,30,33,36,39,42,45,48,51,54,60 labtyp=relpix \
+                       nxy=1,1 \
+                       range=0,%s,lin,6 options=relax,wedge,blacklab cols1=0 olay=%s.vg'
+                       %(self.m0,self.nm+mode,self.nm+mode,self.rms,ang  ,mode))
+            #            mom0   ,data        ,plot_name   ,rms     ,range,olay_name
+            
+        if g.size: # if gd != None
             gf = np.pad(self.grad(),((1,1),(1,1)),mode='constant')
             gx = np.pad(self.gd()[0],((1,1),(1,1)),mode='constant')
             gy = np.pad(self.gd()[1],((1,1),(1,1)),mode='constant')
             # pad back to dimension equal to the original map
-        
-            f = open("gd.vg", "w")
+            mode='gd'
+            
+            f = open("%s.vg" %mode, "w")
             f.write('\n'+'COLOR'+' '+str(1))
+            f.write('\n'+'LWID'+' '+str(2))
             for xx in range(gf.shape[1]):
                 for yy in range(gf.shape[0]):
                     f.write('\n'+'v'+' '+'abspix'+' '+'abspix'+' '+'sdvg'+' '+'no'+' '+ \
                             str(xx+1)+' '+str(yy+1)+' '+ \
                             str(10*np.abs(np.sqrt(gx[yy,xx]**2+gy[yy,xx]**2)))+' '+str(gf[yy,xx]))
             f.close()
-            os.system('rm -rf test_gf.fits test_gf')
-
-            hdu = fits.PrimaryHDU(gf)
-            hdu.writeto('test_gf.fits')
-
-            os.system('fits in=test_gf.fits out=test_gf op=xyin')
-            os.system('cgdisp in=test_mom0,test_gf \
-                       device=test_gf.ps/vcps slev=a,3.8 type=c,p \
-                       levs1=3,6,9,12,15,18,21,24,30,33,36,39,42,45,48,51,54,60 labtyp=relpix \
-                       nxy=1,1 \
-                       range=0,180,lin,6 options=relax,wedge,blacklab cols1=0 olay=gd.vg')
+            cgdisp(self,ds=gf,mode=mode,ang=180.)
+            
+        if b.size:
+            mode ='pol'
+            
+            f = open("%s.vg" %mode, "w")
+            f.write('\n'+'COLOR'+' '+str(8))
+            f.write('\n'+'LWID'+' '+str(3))
+            for xx in range(b.shape[1]):
+                for yy in range(b.shape[0]):
+                    f.write('\n'+'v'+' '+'abspix'+' '+'abspix'+' '+'sdvg'+' '+'no'+' '+ \
+                            str(xx+1)+' '+str(yy+1)+' '+ \
+                            str(5*np.abs(pp[yy,xx]))+' '+str(b[yy,xx]    )+' '+str(0))
+                    f.write('\n'+'v'+' '+'abspix'+' '+'abspix'+' '+'sdvg'+' '+'no'+' '+ \
+                            str(xx+1)+' '+str(yy+1)+' '+ \
+                            str(5*np.abs(pp[yy,xx]))+' '+str(b[yy,xx]+180)+' '+str(0))
+                
+            f.close()
+            cgdisp(self,ds=b,mode=mode,ang=180.)
+            
+        if b.size and g.size:
+            d = cp(b,gf)
+            mode='diff'
+            
+            f = open("%s.vg" %mode, "w")
+            f.write('\n'+'COLOR'+' '+str(5))
+            f.write('\n'+'LWID'+' '+str(2))
+            for xx in range(d.shape[1]):
+                for yy in range(d.shape[0]):
+                    f.write('\n'+'v'+' '+'abspix'+' '+'abspix'+' '+'sdvg'+' '+'no'+' '+ \
+                            str(xx+1)+' '+str(yy+1)+' '+ \
+                            str(0.5)+' '+str(d[yy,xx]    )+' '+str(0))
+                    f.write('\n'+'v'+' '+'abspix'+' '+'abspix'+' '+'sdvg'+' '+'no'+' '+ \
+                            str(xx+1)+' '+str(yy+1)+' '+ \
+                            str(0.5)+' '+str(d[yy,xx]+180)+' '+str(0))
+                
+            f.close()
+            cgdisp(self,ds=d,mode=mode,ang=90.)
     
     def _sf(self): # default 180 directionless
         def cp(ar1,ar2):
@@ -161,7 +219,7 @@ class SF(object):
             return sf_,ln_
             
         a = self.grd
-        b = self.po     # remember to make sure they have the same shape
+        b = self.po + 90.     # convert to B-field
         
         if   a.size and not b.size  : return _sf(self.grad()),'directionless gradient'
         elif b.size and not a.size  : return _sf(b),'polarization'
@@ -186,6 +244,3 @@ class SF(object):
         pp.savefig()
             
         pp.close()
-        
-    def show(self):
-        print self.data[0]
