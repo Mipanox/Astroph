@@ -2,6 +2,7 @@
 see the ipython notebook in ~/Desktop/coding_temp for usage and development
 Updated: 2016/05/11:
  - normalized histogram
+ - broken observation points replaced by nan
 '''
 
 import os
@@ -23,9 +24,10 @@ class SF(object):
         if gd:
             with get_readable_fileobj(gd, cache=True) as f:
                 self.fitsfile = fits.open(f)
-                self.grd       = self.fitsfile[0].data[0]
+                self.grd      = self.fitsfile[0].data[0]
                 self.header   = self.fitsfile[0].header
         else: self.grd = np.zeros([0])
+        self.grd[self.grd==0]=np.nan # remove irregular points
         
         if pol:
             with get_readable_fileobj(pol, cache=True) as e:
