@@ -140,7 +140,7 @@ class SF(object):
         def overlap(ar1,ar2): # how many pairs to count
             return (~np.isnan(ar1) * ~np.isnan(ar2)) *1. # convert boolean to int
             
-        def _sf(ar):
+        def sf(ar):
             bn = self.bn
             od = self.od
         
@@ -233,11 +233,11 @@ class SF(object):
         a = self.grd
         b = self.po + 90.     # convert to B-field
         
-        if   a.size and not b.size  : return _sf(self.grad()),'directionless gradient'
-        elif b.size and not a.size  : return _sf(b),'polarization'
+        if   a.size and not b.size  : return sf(self.grad()),'directionless gradient'
+        elif b.size and not a.size  : return sf(b),'polarization'
         elif a.size and b.size      : 
             gf = np.pad(self.grad(),((1,1),(1,1)),mode='constant') # padding to match dimensions
-            return _sf(cp(gf,b)),'difference (directionless)'
+            return sf(cp(gf,b)),'difference (directionless)'
     
     def wrfile(self):
         ((sff,dis,his),wh) = self._sf()
