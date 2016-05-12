@@ -243,8 +243,8 @@ class SF(object):
     
     def wrfile(self):
         ((sff,dis,his),wh) = self._sf()
-        
-        pp = PdfPages('SF_%s.pdf' %self.nm)
+
+        pp = PdfPages('SF of %s_%s.pdf' %(wh,self.nm))
         plt.figure()
         
         plt.clf()
