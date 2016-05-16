@@ -1,8 +1,7 @@
 '''
 see the ipython notebook in ~/Desktop/coding_temp for usage and development
-Updated: 2016/05/11:
- - normalized histogram
- - broken observation points replaced by nan
+Updated: 2016/05/16:
+ - error propagation from cube -> m1 -> gd -> pa -> sf
 '''
 
 import os
@@ -14,20 +13,21 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 
 class SF(object):
-    def __init__(self,name,od,bn,gd=None,pol=None,polp=None,choice='directionless',**kwargs):
+    def __init__(self,name,od,bn,ds=None,pol=None,polp=None,choice='directionless',
+                 s_i=0.,s_v=0.,**kwargs):
         self.nm = name
         self.od = od
         self.bn = bn
         self.ch = choice
         self.__dict__.update(kwargs)
         
-        if gd:
-            with get_readable_fileobj(gd, cache=True) as f:
+        if ds:
+            with get_readable_fileobj(ds, cache=True) as f:
                 self.fitsfile = fits.open(f)
-                self.grd      = self.fitsfile[0].data[0]
-                self.header   = self.fitsfile[0].header
-        else: self.grd = np.zeros([0])
-        self.grd[self.grd==0]=np.nan # remove irregular points
+                self.ds       = self.fitsfile[0].data
+                self.dshd     = self.fitsfile[0].header
+        else: self.ds = np.zeros([0])
+        self.ds[self.ds==0]=np.nan # remove irregular points
         
         if pol:
             with get_readable_fileobj(pol, cache=True) as e:
@@ -35,8 +35,8 @@ class SF(object):
                 self.po       = self.fitsfile[0].data
                 self.header   = self.fitsfile[0].header
         else: self.po = np.zeros([0])
-        # default grd and po to zero arrays with size 0 if not given
-            
+        # default ds and po to zero arrays with size 0 if not given
+        
         if polp:
             with get_readable_fileobj(polp, cache=True) as e:
                 self.fitsfile = fits.open(e)
@@ -44,32 +44,85 @@ class SF(object):
                 self.header   = self.fitsfile[0].header
         else: self.pop = np.ones(self.po.shape)*0.07 # set to 7% percentage
     
-    def gd(self):
-        gx,gy = np.gradient(self.grd,1,1)
-        return gx[1:-1,1:-1],gy[1:-1,1:-1]
+    def _m1(self): # compute moment 1 an its associated error
+        s_i = np.sqrt(np.nanmean(self.ds[0]**2)) # set intensity rms to be the mean of 1st channel
+        s_v = self.dshd["cdelt3"] / 1000.        # channel width, in km/s
+        vel = np.arange(self.ds.shape[0]) * s_v + self.dshd["crval3"] / 1000.
+        
+        v_tot = np.sum(vel)
+        v_exp = np.swapaxes(np.tile(vel,(self.ds.shape[2],self.ds.shape[1],1)),0,2)
+        # expand vel into the same shape as ds
+
+        mom_1 = np.nansum(self.ds * v_exp,axis=0) / np.nansum(self.ds,axis=0) # mom 1
+        m1__e = np.sqrt(np.nansum((s_i * v_exp)**2  ,axis=0) + \
+                        np.nansum((s_v * self.ds)**2,axis=0)) / np.nansum(self.ds,axis=0)
+        
+        return mom_1,m1__e
     
-    def grad(self):
-        gx,gy = self.gd()
+    def _gd(self):
+        m1,e1 = self._m1()
+        ## see numpy documentation : https://goo.gl/qbDii6
+        ## testing notebook at npgradient
+        ## - add error propagation
+        
+        outvals,errvals = [],[]
+        N = len(m1.shape)
+        
+        # create slice objects --- initially all are [:, :, ..., :]
+        sl1,sl2,sl3,sl4 = [slice(None)]*N,[slice(None)]*N,[slice(None)]*N,[slice(None)]*N
+
+        for axis in range(N):
+            # Use first order differences for time data
+            out = np.empty_like(m1)
+            err = np.empty_like(m1)
+            sl1[axis],sl2[axis],sl3[axis] = slice(1,-1),slice(2,None),slice(None,-2)
+            # 1D equivalent -- out[1:-1] = (y[2:] - y[:-2])/2.0
+            out[sl1] = (m1[sl2] - m1[sl3])/2.
+            err[sl1] = np.sqrt(e1[sl2]**2+e1[sl3]**2)/2.
+        
+            sl1[axis],sl2[axis],sl3[axis] = 0,1,0
+            # 1D equivalent -- out[0] = (y[1] - y[0])
+            out[sl1] = (m1[sl2] - m1[sl3])
+            err[sl1] = np.sqrt(e1[sl2]**2+e1[sl3]**2)/2.
+
+            sl1[axis],sl2[axis],sl3[axis] = -1,-1,-2
+            # 1D equivalent -- out[-1] = (y[-1] - y[-2])
+            out[sl1] = (m1[sl2] - m1[sl3])
+            err[sl1] = np.sqrt(e1[sl2]**2+e1[sl3]**2)/2.
+            
+            outvals.append(out)
+            errvals.append(err)
+
+            # reset the slice object in this dimension to ":"
+            sl1,sl2,sl3,sl4 = [slice(None)]*N,[slice(None)]*N,[slice(None)]*N,[slice(None)]*N
+            
+        gx,gy = outvals
+        ex,ey = errvals
+        return gx[1:-1,1:-1],gy[1:-1,1:-1],ex[1:-1,1:-1],ey[1:-1,1:-1]
+    
+    def _grad(self):
+        gx,gy,ex,ey = self._gd()
         
         pa180 = np.mod(np.mod(360-np.degrees(np.arctan2(gy,gx)), 360),180)
-        pa360 = np.mod(360-np.degrees(np.arctan2(gy,gx)), 360)
+        er180 = 180/np.pi * abs(gy/gx/(1+(gy/gx)**2)) * np.sqrt((ex/gx)**2 + (ey/gy)**2)
+        # pa360 = np.mod(360-np.degrees(np.arctan2(gy,gx)), 360)
         
-        if self.ch   == 'directionless': return pa180
-        elif self.ch == 'full':          return pa360
+        if self.ch   == 'directionless': return pa180,er180
+        elif self.ch == 'full':          return pa360 # temporary, not used
         
     def draw(self):
-        g  = self.grd
+        g  = self._m1()[0]
         b  = self.po + 90.
         pp = self.pop
         
         def cp(ar1,ar2): return np.minimum((ar1-ar2)%180.,(ar2-ar1)%180.)
         def cgdisp(self,ds,mode,ang):
-            os.system('rm -rf %s %s' %(self.nm+mode+'fits',self.nm+mode))
+            os.system('rm -rf %s %s' %(self.nm+mode+'.fits',self.nm+mode))
 
             hdu = fits.PrimaryHDU(ds)
-            hdu.writeto('%s' %(self.nm+mode+'fits'))
+            hdu.writeto('%s' %(self.nm+mode+'.fits'))
 
-            os.system('fits in=%s out=%s op=xyin' %(self.nm+mode+'fits',self.nm+mode))
+            os.system('fits in=%s out=%s op=xyin' %(self.nm+mode+'.fits',self.nm+mode))
             os.system('cgdisp in=%s,%s \
                        device=%s.ps/vcps slev=a,%s type=c,p \
                        levs1=3,6,9,12,15,18,21,24,30,33,36,39,42,45,48,51,54,60 labtyp=relpix \
@@ -79,9 +132,9 @@ class SF(object):
             #            mom0   ,data        ,plot_name   ,rms     ,range,olay_name
             
         if g.size: # if gd != None
-            gf = np.pad(self.grad(),((1,1),(1,1)),mode='constant')
-            gx = np.pad(self.gd()[0],((1,1),(1,1)),mode='constant')
-            gy = np.pad(self.gd()[1],((1,1),(1,1)),mode='constant')
+            gf = np.pad(self._grad()[0],((1,1),(1,1)),mode='constant')
+            gx = np.pad(self._gd()[0]  ,((1,1),(1,1)),mode='constant')
+            gy = np.pad(self._gd()[1]  ,((1,1),(1,1)),mode='constant')
             # pad back to dimension equal to the original map
             mode='gd'
             
@@ -92,7 +145,7 @@ class SF(object):
                 for yy in range(gf.shape[0]):
                     f.write('\n'+'v'+' '+'abspix'+' '+'abspix'+' '+'sdvg'+' '+'no'+' '+ \
                             str(xx+1)+' '+str(yy+1)+' '+ \
-                            str(10*np.abs(np.sqrt(gx[yy,xx]**2+gy[yy,xx]**2)))+' '+str(gf[yy,xx]))
+                            str(0.005*np.abs(np.sqrt(gx[yy,xx]**2+gy[yy,xx]**2)))+' '+str(gf[yy,xx]))
             f.close()
             cgdisp(self,ds=gf,mode=mode,ang=180.)
             
@@ -134,25 +187,26 @@ class SF(object):
             cgdisp(self,ds=d,mode=mode,ang=90.)
     
     def _sf(self): # default 180 directionless
+    ## NOTE: od has been defaulted to 2 (for error propagation)
         def cp(ar1,ar2):
             h = (ar1 - ar2) % 180.
             f = (ar2 - ar1) % 180. # always positive, no need for 'abs'
             return np.minimum(h,f)
         
         def overlap(ar1,ar2): # how many pairs to count
-            return (~np.isnan(ar1) * ~np.isnan(ar2)) *1. # convert boolean to int
+            return (~np.isnan(ar1) * ~np.isnan(ar2))
             
-        def sf(ar):
+        def sf((ar,er)):
             bn = self.bn
             od = self.od
-        
             s = min(ar.shape)
             b = max(ar.shape)
             ln = np.unique(np.sort(np.array([(m*m+n*n) for m in range(s) for n in range(m,b)])))
             ct = np.zeros(len(ln)) # count if sf[ix] has been filled with how many pairs
             sf = np.zeros(len(ln))
+            ef = np.zeros(len(ln)) # error
             hs = [[] for _ in range(len(ln))] # for histogram, throw in raw data
-        
+            
             xv = ar.shape[0]
             yv = ar.shape[1]
             
@@ -161,63 +215,76 @@ class SF(object):
                 ix = np.where(ln==ll)[0][0]
         
                 if x==0 and y!=0:
-                    aa = np.pad(ar,((0,0),(y,0)),
-                                mode='constant', constant_values=(np.nan))[:, :-y]
-                    nb = np.sum(overlap(ar,aa))
-            
+                    aa = np.pad(ar,((0,0),(y,0)),mode='constant', constant_values=(np.nan))[:, :-y]
+                    ea = np.pad(er,((0,0),(y,0)),mode='constant', constant_values=(np.nan))[:, :-y]
+                    
+                    mask = overlap(ar,aa)
+                    nb = np.sum(mask * 1.) # convert boolean to int
+                    
                     r1 = cp(ar,aa)
                     if nb+ct[ix]==0: continue
                     else:
-                        sf[ix] = (sf[ix]*ct[ix] + np.nansum(r1**od))/(nb + ct[ix]) # new average
+                        sf[ix]  = (sf[ix]*ct[ix] + np.nansum(r1**od))/(nb + ct[ix]) # new average
+                        ef[ix] += np.nansum(r1**od * ((er*mask)**2 + (ea*mask)**2))
                     ct[ix] += nb
                     hs[ix] += r1[~np.isnan(r1)].flatten().tolist() # get all pairs and append to corresponding list
 
                 elif y==0 and x!=0:
-                    aa = np.pad(ar,((x,0),(0,0)),
-                                mode='constant', constant_values=(np.nan))[:-x, :]
-                    nb = np.sum(overlap(ar,aa))
+                    aa = np.pad(ar,((x,0),(0,0)),mode='constant', constant_values=(np.nan))[:-x, :]
+                    ea = np.pad(er,((x,0),(0,0)),mode='constant', constant_values=(np.nan))[:-x, :]
+                                            
+                    mask = overlap(ar,aa)
+                    nb = np.sum(mask * 1.)
             
                     r1 = cp(ar,aa)
                     if nb+ct[ix]==0: continue
                     else:
                         sf[ix] = (sf[ix]*ct[ix] + np.nansum(r1**od))/(nb + ct[ix]) 
+                        ef[ix] += np.nansum(r1**od * ((er*mask)**2 + (ea*mask)**2))
                     ct[ix] += nb
                     hs[ix] += r1[~np.isnan(r1)].flatten().tolist()
 
                 elif x!=0 and y!=0:
-                    aa = np.pad(ar,((x,0),(y,0)),
-                                mode='constant', constant_values=(np.nan))[:-x, :-y]
-                    bb = np.pad(ar,((0,x),(y,0)),
-                                mode='constant', constant_values=(np.nan))[x:, :-y] # negative configuration
-                    nb = 2.*np.sum(overlap(ar,aa))
+                    # positive and negative configuration
+                    aa = np.pad(ar,((x,0),(y,0)),mode='constant', constant_values=(np.nan))[:-x, :-y]
+                    ea = np.pad(er,((x,0),(y,0)),mode='constant', constant_values=(np.nan))[:-x, :-y]
+                    bb = np.pad(ar,((0,x),(y,0)),mode='constant', constant_values=(np.nan))[x:, :-y]
+                    eb = np.pad(er,((0,x),(y,0)),mode='constant', constant_values=(np.nan))[x:, :-y]
+                    
+                    maska,maskb = overlap(ar,aa),overlap(ar,bb)
+                    nb = 2.*np.sum(maska * 1.)
                     # number of computed pairs
-
+                    
                     r1,r2 = cp(ar,aa),cp(ar,bb)
                     if nb+ct[ix]==0: continue
                     else:
                         sf[ix] = (sf[ix]*ct[ix] + np.nansum(r1**od) \
                                                 + np.nansum(r2**od))/(nb + ct[ix])
+                        ef[ix] += np.nansum(r1**od * ((er*maska)**2 + (ea*maska)**2)) + \
+                                  np.nansum(r2**od * ((er*maskb)**2 + (eb*maskb)**2))
                     ct[ix] += nb
                     hs[ix] += r1[~np.isnan(r1)].flatten().tolist() + \
                               r2[~np.isnan(r2)].flatten().tolist()
-    
+            #print ef,ct,ln
             ## bin
             ls = np.sqrt(ln)
             bs = np.arange(ls[0], round(ls[-1])+1, bn) - 1.e-12 # make sure no ambiguity for integers
             (counts, _) = np.histogram(ls, bs)
             idx = counts.cumsum() # binning indices for sf
     
-            sf_,ln_,hs_ = [],[],[]
+            sf_,ef_,ln_,hs_ = [],[],[],[]
             j = 1
             for i in idx:
                 if i==1: continue
                 else:
                     if np.sum(ct[j:i])==0: 
                         sf_.append(0.)
+                        ef_.append(0.)
                         ln_.append(0.)  # avoid divided by zero
                         hs_.append([0.])
                     else:
                         sf_.append(np.sum((sf[j:i]*ct[j:i])/np.sum(ct[j:i]))**(1./od)) # weighted average of sf
+                        ef_.append(np.sqrt(np.sum(ef[j:i])) / sf_[-1] / np.sum(ct[j:i])) # final error
                         ln_.append(np.sum(ls[j:i]*ct[j:i])/np.sum(ct[j:i])) # weighted average of ls
                         hs_.append(reduce(lambda x, y: x + y, hs[j:i]))
                 j = i
@@ -227,28 +294,29 @@ class SF(object):
                 hs_.append([0.])
             else:
                 sf_.append(np.sum((sf[j:]*ct[j:])/np.sum(ct[j:]))**(1./od)) # don't forget the last bin
+                ef_.append(np.sqrt(np.sum(ef[j:])) / sf_[-1] / np.sum(ct[j:]))
                 ln_.append(np.sum(ls[j:]*ct[j:])/np.sum(ct[j:]))
                 hs_.append(reduce(lambda x, y: x + y, hs[j:]))
+            
+            return sf_,ef_,ln_,hs_
         
-            return sf_,ln_,hs_
-        
-        a = self.grd
+        a = self._m1()[0]
         b = self.po + 90.     # convert to B-field
         
-        if   a.size and not b.size  : return sf(self.grad()),'directionless gradient'
+        if   a.size and not b.size  : return sf(self._grad()),'directionless gradient'
         elif b.size and not a.size  : return sf(b),'polarization'
         elif a.size and b.size      : 
-            gf = np.pad(self.grad(),((1,1),(1,1)),mode='constant') # padding to match dimensions
+            gf = np.pad(self._grad(),((1,1),(1,1)),mode='constant') # padding to match dimensions
             return sf(cp(gf,b)),'difference (directionless)'
     
     def wrfile(self):
-        ((sff,dis,his),wh) = self._sf()
-
+        ((sff,eff,dis,his),wh) = self._sf()
+        
         pp = PdfPages('SF of %s_%s.pdf' %(wh,self.nm))
         plt.figure()
         
         plt.clf()
-        plt.scatter(dis,sff,s=12,c='b',edgecolors='none')
+        plt.errorbar(dis,sff,yerr=eff,markersize=4,fmt='o',ecolor='b',c='b',elinewidth=1.5,capsize=4)
         plt.xlabel('distance (pixel)')
         plt.ylabel('angle difference')
         plt.xlim(0,max(dis)+1)
