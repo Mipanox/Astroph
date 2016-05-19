@@ -1,7 +1,7 @@
 '''
 see the ipython notebook in ~/Desktop/coding_temp for usage and development
-Updated: 2016/05/16:
- - error propagation from cube -> m1 -> gd -> pa -> sf
+Updated: 2016/05/18:
+ - pol+gd error propagation plus threshold (clip)
 '''
 
 import os
@@ -14,11 +14,12 @@ from matplotlib.backends.backend_pdf import PdfPages
 
 class SF(object):
     def __init__(self,name,od,bn,ds=None,pol=None,polp=None,choice='directionless',
-                 s_i=0.,s_v=0.,**kwargs):
+                 s_i=0.,s_v=0.,cri=None,**kwargs):
         self.nm = name
         self.od = od
         self.bn = bn
         self.ch = choice
+        self.cri = cri
         self.__dict__.update(kwargs)
         
         if ds:
@@ -30,32 +31,41 @@ class SF(object):
         self.ds[self.ds==0]=np.nan # remove irregular points
         
         if pol:
+            self.pol = pol # fits file
             with get_readable_fileobj(pol, cache=True) as e:
                 self.fitsfile = fits.open(e)
                 self.po       = self.fitsfile[0].data
                 self.header   = self.fitsfile[0].header
         else: self.po = np.zeros([0])
         # default ds and po to zero arrays with size 0 if not given
+        self.po[self.po==0]=np.nan
         
+        '''
         if polp:
             with get_readable_fileobj(polp, cache=True) as e:
                 self.fitsfile = fits.open(e)
                 self.pop      = self.fitsfile[0].data
                 self.header   = self.fitsfile[0].header
         else: self.pop = np.ones(self.po.shape)*0.07 # set to 7% percentage
+        '''
+        if ds:
+            self.s_i = min(np.sqrt(np.nanmean(self.ds[0]**2)),
+                           np.sqrt(np.nanmean(self.ds[-1]**2))) # set intensity rms to be the min rms
+            self.s_v = self.dshd["cdelt3"] / 1000.              # channel width, in km/s 
+            self.ds[self.ds < self.s_i]=np.nan # blank low SN points
     
     def _m1(self): # compute moment 1 an its associated error
-        s_i = np.sqrt(np.nanmean(self.ds[0]**2)) # set intensity rms to be the mean of 1st channel
-        s_v = self.dshd["cdelt3"] / 1000.        # channel width, in km/s
-        vel = np.arange(self.ds.shape[0]) * s_v + self.dshd["crval3"] / 1000.
+        vel = np.arange(self.ds.shape[0]) * self.s_v + self.dshd["crval3"] / 1000.
         
         v_tot = np.sum(vel)
         v_exp = np.swapaxes(np.tile(vel,(self.ds.shape[2],self.ds.shape[1],1)),0,2)
         # expand vel into the same shape as ds
 
         mom_1 = np.nansum(self.ds * v_exp,axis=0) / np.nansum(self.ds,axis=0) # mom 1
-        m1__e = np.sqrt(np.nansum((s_i * v_exp)**2  ,axis=0) + \
-                        np.nansum((s_v * self.ds)**2,axis=0)) / np.nansum(self.ds,axis=0)
+        I_t   = np.nansum(self.ds        ,axis=0)
+        Iv_t  = np.nansum(self.ds * v_exp,axis=0)
+        m1__e = np.sqrt(np.nansum((self.s_i*(v_exp*I_t - Iv_t))**2,axis=0) + \
+                        np.nansum((self.s_v*(self.ds*I_t))**2     ,axis=0))/ I_t**2
         
         return mom_1,m1__e
     
@@ -95,85 +105,180 @@ class SF(object):
 
             # reset the slice object in this dimension to ":"
             sl1,sl2,sl3,sl4 = [slice(None)]*N,[slice(None)]*N,[slice(None)]*N,[slice(None)]*N
-            
+           
         gx,gy = outvals
         ex,ey = errvals
         return gx[1:-1,1:-1],gy[1:-1,1:-1],ex[1:-1,1:-1],ey[1:-1,1:-1]
     
-    def _grad(self):
-        gx,gy,ex,ey = self._gd()
+    def _grad(self,dr=None,pol=None):
+        if pol: 
+            gy = self.po[1] # Q
+            gx = self.po[2] # U
+            ex,ey = self.du,self.du # estimated from given table (see note)
+            
+            os.system('rm -rf %s %s_U %s_Q %s_pa' %(self.pol[:-5],self.nm,self.nm,self.nm))
+            os.system('fits in=%s out=%s op=xyin' %(self.pol,self.pol[:-5]))
+            os.system('fits in=%s out=%s_Q.fits op=xyout region=image"(2,2)"' %(self.pol[:-5],self.nm))
+            os.system('fits in=%s out=%s_U.fits op=xyout region=image"(3,3)"' %(self.pol[:-5],self.nm))
+            os.system('fits in=%s_Q.fits out=%s_Q op=xyin' %(self.nm,self.nm))
+            os.system('fits in=%s_U.fits out=%s_U op=xyin' %(self.nm,self.nm))
+            os.system('impol in=%s_Q,%s_U pa=%s_pa sigma=0.0000001' %(self.nm,self.nm,self.nm))
+            # do not blank output, calculate error below
+            os.system('fits in=%s_pa out=%s_pa.fits op=xyout' %(self.nm,self.nm))
+            
+            with get_readable_fileobj('%s_pa.fits' %(self.nm), cache=True) as f:
+                fitsfile = fits.open(f)
+                pa       = fitsfile[0].data
         
-        pa180 = np.mod(np.mod(360-np.degrees(np.arctan2(gy,gx)), 360),180)
+        else:
+            gx,gy,ex,ey = self._gd()
+            pa180 = np.mod(np.mod(360-np.degrees(np.arctan2(gy,gx)), 360),180)
+            pa360 = np.mod(360-np.degrees(np.arctan2(gy,gx)), 360)
+            
         er180 = 180/np.pi * abs(gy/gx/(1+(gy/gx)**2)) * np.sqrt((ex/gx)**2 + (ey/gy)**2)
-        # pa360 = np.mod(360-np.degrees(np.arctan2(gy,gx)), 360)
         
-        if self.ch   == 'directionless': return pa180,er180
-        elif self.ch == 'full':          return pa360 # temporary, not used
+        if self.cri: # error threshold, above which SF will not count
+            if pol:
+                pa[er180/2.    > self.cri] = np.nan
+                er180[er180/2. > self.cri] = np.nan
+            else:
+                pa360[er180 > self.cri] = np.nan
+                pa180[er180 > self.cri] = np.nan
+                er180[er180 > self.cri] = np.nan
+        
+        if    dr: return pa360,er180
+        elif pol: return pa,   er180/2. # due to the 1/2 for Stokes
+        else    : return pa180,er180
         
     def draw(self):
-        g  = self._m1()[0]
-        b  = self.po + 90.
-        pp = self.pop
+        # g  = self._m1()[0]
+        # pp = self.pop # default using constant polarization percentage
         
         def cp(ar1,ar2): return np.minimum((ar1-ar2)%180.,(ar2-ar1)%180.)
-        def cgdisp(self,ds,mode,ang):
+        def cgdisp(self,m0,ds,mode,ang,clr):
             os.system('rm -rf %s %s' %(self.nm+mode+'.fits',self.nm+mode))
 
             hdu = fits.PrimaryHDU(ds)
             hdu.writeto('%s' %(self.nm+mode+'.fits'))
-
-            os.system('fits in=%s out=%s op=xyin' %(self.nm+mode+'.fits',self.nm+mode))
-            os.system('cgdisp in=%s,%s \
-                       device=%s.ps/vcps slev=a,%s type=c,p \
-                       levs1=3,6,9,12,15,18,21,24,30,33,36,39,42,45,48,51,54,60 labtyp=relpix \
-                       nxy=1,1 \
-                       range=0,%s,lin,6 options=relax,wedge,blacklab cols1=0 olay=%s.vg'
-                       %(self.m0,self.nm+mode,self.nm+mode,self.rms,ang  ,mode))
-            #            mom0   ,data        ,plot_name   ,rms     ,range,olay_name
             
-        if g.size: # if gd != None
-            gf = np.pad(self._grad()[0],((1,1),(1,1)),mode='constant')
+            os.system('fits in=%s out=%s op=xyin' %(self.nm+mode+'.fits',self.nm+mode))
+            
+            if m0 == 'y':
+                os.system('cgdisp in=%s,%s \
+                           device=%s.ps/vcps slev=a,%s type=c,p \
+                           levs1=3,6,9,12,15,18,21,24,30,33,36,39,42,45,48,51,54,60 labtyp=relpix \
+                           nxy=1,1 range=0,%s,lin,%s options=relax,wedge,blacklab cols1=0 olay=%s.vg'
+                           %(self.m0,self.nm+mode,self.nm+mode,self.rms,ang  ,clr      ,mode))
+                #            mom0   ,data        ,plot_name   ,rms     ,range,clr_scale,olay_name
+            else: # draw pa of field only
+                os.system('cgdisp in=%s \
+                           device=%s_pa.ps/vcps slev=a,1000 type=c \
+                           levs1=1 labtyp=relpix nxy=1,1 options=relax,blacklab cols1=0 olay=%s_e.vg'
+                           %(self.m0,self.nm+mode,mode))
+            
+        if self.ds.size: # if gd != None
+            gf = np.pad(self._grad(dr=1)[0],((1,1),(1,1)),mode='constant') # draw 360
+            ef = np.pad(self._grad(dr=1)[1],((1,1),(1,1)),mode='constant')
             gx = np.pad(self._gd()[0]  ,((1,1),(1,1)),mode='constant')
             gy = np.pad(self._gd()[1]  ,((1,1),(1,1)),mode='constant')
             # pad back to dimension equal to the original map
-            mode='gd'
+            mode = 'gd'
             
-            f = open("%s.vg" %mode, "w")
+            f = open("%s.vg"   %mode, "w")
+            e = open("%s_e.vg" %mode, "w")
             f.write('\n'+'COLOR'+' '+str(1))
             f.write('\n'+'LWID'+' '+str(2))
+            e.write('\n'+'LWID'+' '+str(2))
+            
+            M_mag = np.nanmax(np.abs(np.sqrt(gx**2+gy**2)))/2. # normalizes arrow length (max=2)
             for xx in range(gf.shape[1]):
                 for yy in range(gf.shape[0]):
                     f.write('\n'+'v'+' '+'abspix'+' '+'abspix'+' '+'sdvg'+' '+'no'+' '+ \
                             str(xx+1)+' '+str(yy+1)+' '+ \
-                            str(0.005*np.abs(np.sqrt(gx[yy,xx]**2+gy[yy,xx]**2)))+' '+str(gf[yy,xx]))
+                            str(np.abs(np.sqrt(gx[yy,xx]**2+gy[yy,xx]**2))/M_mag)+' '+str(gf[yy,xx]))
+                              
+                    e.write('\n'+'COLOR'+' '+str(15))
+                    e.write('\n'+'v'+' '+'abspix'+' '+'abspix'+' '+'sdvg'+' '+'no'+' '+ \
+                            str(xx+1)+' '+str(yy+1)+' '+ \
+                            str(np.abs(np.sqrt(gx[yy,xx]**2+gy[yy,xx]**2))/M_mag)+' '+str(gf[yy,xx]+ef[yy,xx]))
+                    e.write('\n'+'v'+' '+'abspix'+' '+'abspix'+' '+'sdvg'+' '+'no'+' '+ \
+                            str(xx+1)+' '+str(yy+1)+' '+ \
+                            str(np.abs(np.sqrt(gx[yy,xx]**2+gy[yy,xx]**2))/M_mag)+' '+str(gf[yy,xx]-ef[yy,xx]))
+                    
+                    e.write('\n'+'COLOR'+' '+str(1))
+                    e.write('\n'+'v'+' '+'abspix'+' '+'abspix'+' '+'sdvg'+' '+'no'+' '+ \
+                            str(xx+1)+' '+str(yy+1)+' '+ \
+                            str(np.abs(np.sqrt(gx[yy,xx]**2+gy[yy,xx]**2))/M_mag)+' '+str(gf[yy,xx]))
             f.close()
-            cgdisp(self,ds=gf,mode=mode,ang=180.)
+            e.close()
+            cgdisp(self,m0='y',ds=gf,mode=mode,ang=360.,clr=6)
+            cgdisp(self,m0='n',ds=gf,mode=mode,ang=360.,clr=6)
             
-        if b.size:
-            mode ='pol'
+        if self.po.size:
+            mode = 'pol'
             
-            f = open("%s.vg" %mode, "w")
+            b  = self._grad(pol=1)[0] + 90.
+            b_e = self._grad(pol=1)[1]
+            
+            f = open("%s.vg"   %mode, "w")
+            e = open("%s_e.vg" %mode, "w")
             f.write('\n'+'COLOR'+' '+str(8))
             f.write('\n'+'LWID'+' '+str(3))
+            e.write('\n'+'LWID'+' '+str(3))
+            
             for xx in range(b.shape[1]):
                 for yy in range(b.shape[0]):
                     f.write('\n'+'v'+' '+'abspix'+' '+'abspix'+' '+'sdvg'+' '+'no'+' '+ \
                             str(xx+1)+' '+str(yy+1)+' '+ \
-                            str(5*np.abs(pp[yy,xx]))+' '+str(b[yy,xx]    )+' '+str(0))
+                            str(0.5)+' '+str(b[yy,xx]    )+' '+str(0))
                     f.write('\n'+'v'+' '+'abspix'+' '+'abspix'+' '+'sdvg'+' '+'no'+' '+ \
                             str(xx+1)+' '+str(yy+1)+' '+ \
-                            str(5*np.abs(pp[yy,xx]))+' '+str(b[yy,xx]+180)+' '+str(0))
+                            str(0.5)+' '+str(b[yy,xx]+180)+' '+str(0))
+                    
+                    e.write('\n'+'COLOR'+' '+str(15)) # error
+                    e.write('\n'+'v'+' '+'abspix'+' '+'abspix'+' '+'sdvg'+' '+'no'+' '+ \
+                            str(xx+1)+' '+str(yy+1)+' '+ \
+                            str(0.5)+' '+str(b[yy,xx]+b_e[yy,xx]    )+' '+str(0))
+                    e.write('\n'+'v'+' '+'abspix'+' '+'abspix'+' '+'sdvg'+' '+'no'+' '+ \
+                            str(xx+1)+' '+str(yy+1)+' '+ \
+                            str(0.5)+' '+str(b[yy,xx]+b_e[yy,xx]+180)+' '+str(0))
+                    e.write('\n'+'v'+' '+'abspix'+' '+'abspix'+' '+'sdvg'+' '+'no'+' '+ \
+                            str(xx+1)+' '+str(yy+1)+' '+ \
+                            str(0.5)+' '+str(b[yy,xx]-b_e[yy,xx]    )+' '+str(0))
+                    e.write('\n'+'v'+' '+'abspix'+' '+'abspix'+' '+'sdvg'+' '+'no'+' '+ \
+                            str(xx+1)+' '+str(yy+1)+' '+ \
+                            str(0.5)+' '+str(b[yy,xx]-b_e[yy,xx]+180)+' '+str(0))
+                    
+                    e.write('\n'+'COLOR'+' '+str(8))
+                    e.write('\n'+'v'+' '+'abspix'+' '+'abspix'+' '+'sdvg'+' '+'no'+' '+ \
+                            str(xx+1)+' '+str(yy+1)+' '+ \
+                            str(0.5)+' '+str(b[yy,xx]    )+' '+str(0))
+                    e.write('\n'+'v'+' '+'abspix'+' '+'abspix'+' '+'sdvg'+' '+'no'+' '+ \
+                            str(xx+1)+' '+str(yy+1)+' '+ \
+                            str(0.5)+' '+str(b[yy,xx]+180)+' '+str(0))
                 
             f.close()
-            cgdisp(self,ds=b,mode=mode,ang=180.)
+            e.close()
+            cgdisp(self,m0='y',ds=b,mode=mode,ang=180.,clr=6)
+            cgdisp(self,m0='n',ds=b,mode=mode,ang=180.,clr=6)
             
-        if b.size and g.size:
-            d = cp(b,gf)
-            mode='diff'
+        if self.po.size and self.ds.size:
+            mode = 'diff'
             
-            f = open("%s.vg" %mode, "w")
-            f.write('\n'+'COLOR'+' '+str(5))
-            f.write('\n'+'LWID'+' '+str(2))
+            gf = np.pad(self._grad(dr=1)[0],((1,1),(1,1)),mode='constant') # draw 360
+            ef = np.pad(self._grad(dr=1)[1],((1,1),(1,1)),mode='constant')
+            b   = self._grad(pol=1)[0] + 90.
+            b_e = self._grad(pol=1)[1]
+            
+            d   = cp(b,gf)
+            d_e = np.sqrt(b_e**2+ef**2)
+            
+            f = open("%s.vg"   %mode, "w")
+            e = open("%s_e.vg" %mode, "w")
+            f.write('\n'+'COLOR'+' '+str(4))
+            f.write('\n'+'LWID'+' '+str(3))
+            e.write('\n'+'LWID'+' '+str(3))
+            
             for xx in range(d.shape[1]):
                 for yy in range(d.shape[0]):
                     f.write('\n'+'v'+' '+'abspix'+' '+'abspix'+' '+'sdvg'+' '+'no'+' '+ \
@@ -182,9 +287,33 @@ class SF(object):
                     f.write('\n'+'v'+' '+'abspix'+' '+'abspix'+' '+'sdvg'+' '+'no'+' '+ \
                             str(xx+1)+' '+str(yy+1)+' '+ \
                             str(0.5)+' '+str(d[yy,xx]+180)+' '+str(0))
+                    
+                    e.write('\n'+'COLOR'+' '+str(15)) # error
+                    e.write('\n'+'v'+' '+'abspix'+' '+'abspix'+' '+'sdvg'+' '+'no'+' '+ \
+                            str(xx+1)+' '+str(yy+1)+' '+ \
+                            str(0.5)+' '+str(d[yy,xx]+d_e[yy,xx]    )+' '+str(0))
+                    e.write('\n'+'v'+' '+'abspix'+' '+'abspix'+' '+'sdvg'+' '+'no'+' '+ \
+                            str(xx+1)+' '+str(yy+1)+' '+ \
+                            str(0.5)+' '+str(d[yy,xx]+d_e[yy,xx]+180)+' '+str(0))
+                    e.write('\n'+'v'+' '+'abspix'+' '+'abspix'+' '+'sdvg'+' '+'no'+' '+ \
+                            str(xx+1)+' '+str(yy+1)+' '+ \
+                            str(0.5)+' '+str(d[yy,xx]-d_e[yy,xx]    )+' '+str(0))
+                    e.write('\n'+'v'+' '+'abspix'+' '+'abspix'+' '+'sdvg'+' '+'no'+' '+ \
+                            str(xx+1)+' '+str(yy+1)+' '+ \
+                            str(0.5)+' '+str(d[yy,xx]-d_e[yy,xx]+180)+' '+str(0))
+                    
+                    e.write('\n'+'COLOR'+' '+str(8))
+                    e.write('\n'+'v'+' '+'abspix'+' '+'abspix'+' '+'sdvg'+' '+'no'+' '+ \
+                            str(xx+1)+' '+str(yy+1)+' '+ \
+                            str(0.5)+' '+str(d[yy,xx]    )+' '+str(0))
+                    e.write('\n'+'v'+' '+'abspix'+' '+'abspix'+' '+'sdvg'+' '+'no'+' '+ \
+                            str(xx+1)+' '+str(yy+1)+' '+ \
+                            str(0.5)+' '+str(d[yy,xx]+180)+' '+str(0))
                 
             f.close()
-            cgdisp(self,ds=d,mode=mode,ang=90.)
+            e.close()
+            cgdisp(self,m0='y',ds=d,mode=mode,ang=90.,clr=8)
+            cgdisp(self,m0='n',ds=d,mode=mode,ang=90.,clr=8)
     
     def _sf(self): # default 180 directionless
     ## NOTE: od has been defaulted to 2 (for error propagation)
@@ -290,6 +419,7 @@ class SF(object):
                 j = i
             if np.sum(ct[j:])==0:
                 sf_.append(0.)
+                ef_.append(0.)
                 ln_.append(0.)
                 hs_.append([0.])
             else:
@@ -300,14 +430,19 @@ class SF(object):
             
             return sf_,ef_,ln_,hs_
         
-        a = self._m1()[0]
-        b = self.po + 90.     # convert to B-field
+        a = self.ds
+        b = self.po
         
-        if   a.size and not b.size  : return sf(self._grad()),'directionless gradient'
-        elif b.size and not a.size  : return sf(b),'polarization'
-        elif a.size and b.size      : 
-            gf = np.pad(self._grad(),((1,1),(1,1)),mode='constant') # padding to match dimensions
-            return sf(cp(gf,b)),'difference (directionless)'
+        if   a.size and not b.size : return sf(self._grad()),'directionless gradient'
+        elif b.size and not a.size : return sf(self._grad(pol=1)),'polarization'
+        elif a.size and b.size : 
+            gf = np.pad(self._grad()[0],((1,1),(1,1)),mode='constant') 
+            ef = np.pad(self._grad()[1],((1,1),(1,1)),mode='constant')
+            b   = self._grad(pol=1)[0] + 90.
+            b_e = self._grad(pol=1)[1]
+            
+            d   = (cp(b,gf),np.sqrt(b_e**2+ef**2))
+            return sf(d),'difference (directionless)'
     
     def wrfile(self):
         ((sff,eff,dis,his),wh) = self._sf()
@@ -316,6 +451,7 @@ class SF(object):
         plt.figure()
         
         plt.clf()
+        
         plt.errorbar(dis,sff,yerr=eff,markersize=4,fmt='o',ecolor='b',c='b',elinewidth=1.5,capsize=4)
         plt.xlabel('distance (pixel)')
         plt.ylabel('angle difference')
