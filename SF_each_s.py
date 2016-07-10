@@ -84,16 +84,12 @@ class SF(object):
                     continue
                 else:
                     ap = ar[slice(x,x+n),slice(y,y+n)]
-            
                     # array of indices
-                    xx,yy=[],[]
-                    for (x_,y_),j in np.ndenumerate(ap):
-                        xx.append(x_)
-                        yy.append(y_)
-                    xx = np.asarray(xx)
-                    yy = np.asarray(yy)
-            
-                    ft = Fit(md, x=xx, y=yy, z=ap.flatten())
+                    xx,yy = np.where(~np.isnan(ap))
+                    zz    = ap.flatten()
+                    zz    = zz[~np.isnan(zz)]
+                    
+                    ft = Fit(md, x=xx, y=yy, z=zz)
                     ft_result = ft.execute()
             
                     (a,b) = (ft_result.params.al,ft_result.params.bl)
@@ -317,4 +313,3 @@ class SF(object):
         wrf(dis,sff,wh,his,'g')
         
         pp.close()
-        
