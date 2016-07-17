@@ -93,7 +93,7 @@ class Vec_Corr(object):
         v1 = self.v1
         v2 = self.v2
         
-        rho_c,rho_h,(xx,yy)=0.,0.,(0,0)
+        rho_c,rho_h,(xc,yc),(xh,yh)=0.,0.,(0,0),(0,0)
         for (x,y),i in np.ndenumerate(v1[0]):
             if x==0 and y==0: continue
             elif x==0: 
@@ -118,8 +118,8 @@ class Vec_Corr(object):
             cor_c = self.corr_c()
             cor_h = self.corr_h()
             
-            if cor_c > rho_c: rho_c = cor_c; (xx,yy)=(-x,-y) # negative for v1 tran.
-            if cor_h > rho_h: rho_h = cor_h; (xx,yy)=(-x,-y)
+            if cor_c > rho_c: rho_c = cor_c; (xc,yc)=(-x,-y) # negative for v1 tran.
+            if cor_h > rho_h: rho_h = cor_h; (xh,yh)=(-x,-y)
         
             # v2 translated
             self.v1 = v1
@@ -128,7 +128,7 @@ class Vec_Corr(object):
             cor_c = self.corr_c()
             cor_h = self.corr_h()
             
-            if cor_c > rho_c: rho_c = cor_c; (xx,yy)=(x,y) # positive for v2 tran.
-            if cor_h > rho_h: rho_h = cor_h; (xx,yy)=(x,y)
+            if cor_c > rho_c: rho_c = cor_c; (xc,yc)=(x,y) # positive for v2 tran.
+            if cor_h > rho_h: rho_h = cor_h; (xh,yh)=(x,y)
             
-        return rho_c,rho_h,(xx,yy)
+        return rho_c,rho_h,(xc,yc),(xh,yh)
