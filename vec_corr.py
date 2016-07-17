@@ -15,6 +15,10 @@ class Vec_Corr(object):
             
         self.s = rdn_s + 10
         
+        global _v1,_v2
+        _v1 = v1
+        _v2 = v2
+        
     def _rdn_v(self):
         return np.random.random(self.v1.shape)
     
@@ -86,6 +90,8 @@ class Vec_Corr(object):
         plt.plot(gen,cor_h,c='r',label='Hanson',linewidth=8)
         plt.legend(loc='upper right',fontsize=24)
         
+        self.v1 = _v1 # reset
+        self.v2 = _v2
         # plt.show()
         
     def crd_tran(self):
@@ -131,4 +137,6 @@ class Vec_Corr(object):
             if cor_c > rho_c: rho_c = cor_c; (xc,yc)=(x,y) # positive for v2 tran.
             if cor_h > rho_h: rho_h = cor_h; (xh,yh)=(x,y)
             
+        self.v1 = _v1
+        self.v2 = _v2
         return rho_c,rho_h,(xc,yc),(xh,yh)
