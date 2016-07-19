@@ -30,7 +30,7 @@ class Vec_Corr(object):
         n = min(np.nansum(v1_x/v1_x),np.nansum(v2_x/v2_x)) 
         # number of overlapping points
         
-        if n==0: return 0.
+        if n <= 1: return 0. # prevent divide by zero
         else:
             v1_x[np.isnan(v1_x)]=0.
             v1_y[np.isnan(v1_y)]=0.
