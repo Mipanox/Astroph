@@ -30,19 +30,22 @@ class Vec_Corr(object):
         n = min(np.nansum(v1_x/v1_x),np.nansum(v2_x/v2_x)) 
         # number of overlapping points
         
-        v1_x[np.isnan(v1_x)]=0.
-        v1_y[np.isnan(v1_y)]=0.
-        v2_x[np.isnan(v2_x)]=0.
-        v2_y[np.isnan(v2_y)]=0.
+        if n==0: return 0.
+        else:
+            v1_x[np.isnan(v1_x)]=0.
+            v1_y[np.isnan(v1_y)]=0.
+            v2_x[np.isnan(v2_x)]=0.
+            v2_y[np.isnan(v2_y)]=0.
         
-        v_ = np.vstack([v1_x,v1_y,v2_x,v2_y])
-        vv = v_ - v_.mean(axis=1).reshape(4,1) # subtraction of mean
-        
-        vf = np.matrix(vv)
-        
-        S = vf*vf.T / (n-1)
-        
-        return np.trace( (S[0:2,2:4]*S[2:4,0:2]) / (S[0:2,0:2]*S[2:4,2:4]) )
+            v_ = np.vstack([v1_x,v1_y,v2_x,v2_y])
+            
+            vv = v_ - v_.mean(axis=1).reshape(4,1) # subtraction of mean
+            vf = np.matrix(vv)
+            
+            S = vf*vf.T / (n-1)
+            
+            return np.trace( S[0:2,0:2]**-1 * S[0:2,2:4] * \
+                             S[2:4,2:4]**-1 * S[2:4,0:2] )
     
     def corr_h(self):
         ## Hanson 1992; rho^2 in [0,1]
@@ -51,20 +54,24 @@ class Vec_Corr(object):
         
         n = min(np.nansum(v1_x/v1_x),np.nansum(v2_x/v2_x))
         
-        v1_x[np.isnan(v1_x)]=0.
-        v1_y[np.isnan(v1_y)]=0.
-        v2_x[np.isnan(v2_x)]=0.
-        v2_y[np.isnan(v2_y)]=0.
-        
-        v1_c = v1_x + v1_y * 1j
-        v2_c = v2_x + v2_y * 1j
-        
-        sig_1 = abs(v1_c**2).sum() / n
-        sig_2 = abs(v2_c**2).sum() / n
-        sig12 = np.sum( (v1_c - v1_c.mean()).conj() * (v2_c - v2_c.mean()) ) / n
-        
-        rho = sig12 / (sig_1 * sig_2)
-        
+        if n==0: return 0.
+        else:
+            v1_x[np.isnan(v1_x)]=0.
+            v1_y[np.isnan(v1_y)]=0.
+            v2_x[np.isnan(v2_x)]=0.
+            v2_y[np.isnan(v2_y)]=0.
+            
+            v1_c = v1_x + v1_y * 1j
+            v2_c = v2_x + v2_y * 1j
+            
+            v1_n = v1_c - v1_c.mean()
+            v2_n = v2_c - v2_c.mean()
+            
+            sig_1 = np.sqrt(abs(v1_n**2).sum() / n)
+            sig_2 = np.sqrt(abs(v2_n**2).sum() / n)
+            sig12 = np.sum( v1_n.conj() * v2_n ) / n
+            
+            rho = sig12 / (sig_1 * sig_2)
         return abs(rho**2)
         
     def rdm_corplt(self):
