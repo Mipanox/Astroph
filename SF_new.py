@@ -21,8 +21,6 @@ class SF(object):
         self.ch = choice
         self.cri = cri
         
-        self.m0 = self._m0()
-        self.m1 = self._m1()[0]
         self.__dict__.update(kwargs)
         
         if ds:
@@ -56,6 +54,9 @@ class SF(object):
                            np.sqrt(np.nanmean(self.ds[-1]**2))) # set intensity rms to be the min rms
             self.s_v = self.dshd["cdelt3"] / 1000.              # channel width, in km/s 
             self.ds[self.ds < self.s_i]=np.nan # blank low SN points
+
+        self.m0 = self._m0()
+        self.m1 = self._m1()[0]
             
     def _m0(self): return np.nansum(self.ds,axis=0)
     def _m1(self): # compute moment 1 an its associated error
