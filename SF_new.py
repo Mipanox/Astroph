@@ -1,8 +1,9 @@
 '''
 see the ipython notebook in ~/Desktop/coding_temp for usage and development
-Updated: 2016/05/18:
- - pol+gd error propagation plus threshold (clip)
+Updated: 2016/07/30:
+- intrinsic m0,m1 calculations
 '''
+
 import os
 from astropy.utils.data import get_readable_fileobj
 from astropy.io import fits
@@ -19,6 +20,9 @@ class SF(object):
         self.bn = bn
         self.ch = choice
         self.cri = cri
+        
+        self.m0 = self._m0()
+        self.m1 = self._m1()[0]
         self.__dict__.update(kwargs)
         
         if ds:
@@ -52,7 +56,8 @@ class SF(object):
                            np.sqrt(np.nanmean(self.ds[-1]**2))) # set intensity rms to be the min rms
             self.s_v = self.dshd["cdelt3"] / 1000.              # channel width, in km/s 
             self.ds[self.ds < self.s_i]=np.nan # blank low SN points
-    
+            
+    def _m0(self): return np.nansum(self.ds,axis=0)
     def _m1(self): # compute moment 1 an its associated error
         vel = np.arange(self.ds.shape[0]) * self.s_v + self.dshd["crval3"] / 1000.
         
@@ -150,6 +155,7 @@ class SF(object):
         else    : return pa180,er180
         
     def draw(self):
+        ## deprecated: self.m0 is no longer provided at input ##
         # g  = self._m1()[0]
         # pp = self.pop # default using constant polarization percentage
         
@@ -380,7 +386,7 @@ class SF(object):
                     eb = np.pad(er,((0,x),(y,0)),mode='constant', constant_values=(np.nan))[x:, :-y]
                     
                     maska,maskb = overlap(ar,aa),overlap(ar,bb)
-                    nb = np.sum(maska*1.) + np.sum(maskb*1.)
+                    nb = 2.*np.sum(maska * 1.)
                     # number of computed pairs
                     
                     r1,r2 = cp(ar,aa),cp(ar,bb)
@@ -393,7 +399,7 @@ class SF(object):
                     ct[ix] += nb
                     hs[ix] += r1[~np.isnan(r1)].flatten().tolist() + \
                               r2[~np.isnan(r2)].flatten().tolist()
-            
+            #print ef,ct,ln
             ## bin
             ls = np.sqrt(ln)
             bs = np.arange(ls[0], round(ls[-1])+1, bn) - 1.e-12 # make sure no ambiguity for integers
