@@ -386,7 +386,7 @@ class SF(object):
                     eb = np.pad(er,((0,x),(y,0)),mode='constant', constant_values=(np.nan))[x:, :-y]
                     
                     maska,maskb = overlap(ar,aa),overlap(ar,bb)
-                    nb = 2.*np.sum(maska * 1.)
+                    nb = np.sum(maska*1.) + np.sum(maskb*1.)
                     # number of computed pairs
                     
                     r1,r2 = cp(ar,aa),cp(ar,bb)
@@ -399,7 +399,7 @@ class SF(object):
                     ct[ix] += nb
                     hs[ix] += r1[~np.isnan(r1)].flatten().tolist() + \
                               r2[~np.isnan(r2)].flatten().tolist()
-            #print ef,ct,ln
+                        
             ## bin
             ls = np.sqrt(ln)
             bs = np.arange(ls[0], round(ls[-1])+1, bn) - 1.e-12 # make sure no ambiguity for integers
