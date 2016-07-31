@@ -83,24 +83,49 @@ class Main(QMainWindow, Ui_MainWindow):
         self.y_st = self.yst.value()
 
     def _fetch(self):
-        self.dn = sfn(ds=self.dcube_path,name='foo',od=2.,bn=1.,
-                     pol=self.poldt_path,du=1.5e-5)
-        self.ds = sf(ds=self.dcube_path,name='foo',od=2.,bn=1.,
-                    pol=self.poldt_path,du=1.5e-5)
-        m0 = self.dn.m0
-        m1 = self.dn.m1
+        if self.checkBox.isChecked() == True:
+            self.__fet()
+        else:
+            self.dn = sfn(ds=self.dcube_path,name='foo',od=2.,bn=1.,
+                          pol=self.poldt_path,du=1.5e-5)
+            self.ds = sf(ds=self.dcube_path,name='foo',od=2.,bn=1.,
+                         pol=self.poldt_path,du=1.5e-5)
+            m0 = self.dn.m0
+            m1 = self.dn.m1
         
-        i = 0
-        for n in [m0,m1]:
-            fig_ = Figure()
-            axf_ = fig_.add_subplot(111)
-            cax = axf_.imshow(n,origin='lower')
-            fig_.colorbar(cax)
-            name = 'moment %s' %i
-            self.fig_dict[name] = fig_
-            self.fg_dict[name] = n
-            self.mplfigs.addItem(name)
-            i += 1
+            i = 0
+            for n in [m0,m1]:
+                fig_ = Figure()
+                axf_ = fig_.add_subplot(111)
+                cax = axf_.imshow(n,origin='lower')
+                fig_.colorbar(cax)
+                name = 'moment %s' %i
+                self.fig_dict[name] = fig_
+                self.fg_dict[name] = n
+                self.mplfigs.addItem(name)
+                i += 1
+            
+    def __fet(self):
+        from astropy.utils.data import get_readable_fileobj
+        from astropy.io import fits
+
+        with get_readable_fileobj(self.dcube_path, cache=True) as f:
+            fitsfile = fits.open(f)
+            gd       = fitsfile[0].data[0][0]
+            dshd     = fitsfile[0].header
+
+        with get_readable_fileobj(self.poldt_path, cache=True) as e:
+            fitsfile = fits.open(e)
+            po       = fitsfile[0].data[0][0] + 90. # to B-field
+            pshd     = fitsfile[0].header
+
+        tx = 'gd-pol'
+        fig = Figure()
+        self.fig_dict[tx] = fig
+        self.fg_dict[tx] = [gd,po]
+        self.mplfigs.addItem(tx)
+        axf = fig.add_subplot(111)
+        self.__quiver(gd,po,axf,tx)
 
     def __quiver(self,gd,po,plt,tx):
         lx,ly = gd.shape
@@ -180,15 +205,18 @@ class Main(QMainWindow, Ui_MainWindow):
             
         
         if len(self.allxpoints) > 0: # if roi selected
-            self.tempxpt,self.tempypt = self.allxpoints,self.allypoints
-            old_xd,old_yd = self.dn.m0.shape
-            new_xd,new_yd = gd.shape
+            if self.checkBox.isChecked() == True:
+                tp = self.getMask(gd)
+            else:
+                self.tempxpt,self.tempypt = self.allxpoints,self.allypoints
+                old_xd,old_yd = self.dn.m0.shape
+                new_xd,new_yd = gd.shape
             
-            for i in range(len(self.allxpoints)):
-                self.allxpoints[i] *= float(new_xd) / float(old_xd)
-                self.allypoints[i] *= float(new_yd) / float(old_yd)
+                for i in range(len(self.allxpoints)):
+                    self.allxpoints[i] *= float(new_xd) / float(old_xd)
+                    self.allypoints[i] *= float(new_yd) / float(old_yd)
         
-            tp = self.getMask(gd)
+                    tp = self.getMask(gd)
         
             gd[tp==False] = np.nan
             po[tp==False] = np.nan
@@ -231,6 +259,9 @@ class Main(QMainWindow, Ui_MainWindow):
     def addmpl(self, fig, fg):
         self.canvas = FigureCanvas(fig)
         self.mplvl.addWidget(self.canvas)
+        self.toolbar = NavigationToolbar(self.canvas,
+                                         self.mplwindow, coordinates=True)
+        self.mplvl.addWidget(self.toolbar)
         self.fg = fg
         
         self.ax = self.fig.add_subplot(111)
@@ -242,6 +273,8 @@ class Main(QMainWindow, Ui_MainWindow):
     def rmmpl(self,):
         self.mplvl.removeWidget(self.canvas)
         self.canvas.close()
+        self.mplvl.removeWidget(self.toolbar)
+        self.toolbar.close()
 
     def __button_press_callback(self, event):
         if event.inaxes:
