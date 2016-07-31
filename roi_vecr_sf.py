@@ -41,6 +41,10 @@ class Main(QMainWindow, Ui_MainWindow):
         self.calc.clicked.connect(self._calc)
         self.reset.clicked.connect(self._reset)
 
+        self.xst.valueChanged[str].connect(self.xchg)
+        self.yst.valueChanged[str].connect(self.ychg)
+        self.x_st, self.y_st = 0,0
+
         fig = Figure()
         self.fig = fig
         self.addmpl(fig, np.ones((100,100)))
@@ -73,6 +77,11 @@ class Main(QMainWindow, Ui_MainWindow):
         self.po_nm.setText(QFileDialog.getOpenFileName())
         self.poldt_path = unicode(self.po_nm.text())
 
+    def xchg(self):
+        self.x_st = self.xst.value()
+    def ychg(self):
+        self.y_st = self.yst.value()
+
     def _fetch(self):
         self.dn = sfn(ds=self.dcube_path,name='foo',od=2.,bn=1.,
                      pol=self.poldt_path,du=1.5e-5)
@@ -86,27 +95,27 @@ class Main(QMainWindow, Ui_MainWindow):
             fig_ = Figure()
             axf_ = fig_.add_subplot(111)
             axf_.imshow(n,origin='lower')
+            fig_.colorbar()
             name = 'moment %s' %i
             self.fig_dict[name] = fig_
             self.fg_dict[name] = n
             self.mplfigs.addItem(name)
             i += 1
+
+    def __quiver(self,gd,po,plt,tx):
+        lx,ly = gd.shape
+        y,x = np.mgrid[0:(lx-1):(lx)*1j, 0:(ly-1):(ly)*1j]
+
+        gx,gy = -np.sin(np.radians(gd)),np.cos(np.radians(gd))
+        px,py = -np.sin(np.radians(po)+90.),np.cos(np.radians(po)+90.)
+
+        quiveropts = dict(headlength=0, pivot='middle',
+                          scale=5e1, headaxislength=0)
+        plt.axis('equal');
+        plt.quiver(x,y,gx,gy,color='r',**quiveropts)
+        plt.quiver(x,y,px,py,color='b',alpha=0.5,**quiveropts)
     
     def _calc(self):
-        def quiv(gd,po,plt,tx):
-            lx,ly = gd.shape
-            y,x = np.mgrid[0:(lx-1):(lx)*1j, 0:(ly-1):(ly)*1j]
-
-            gx,gy = -np.sin(np.radians(gd)),np.cos(np.radians(gd))
-            px,py = -np.sin(np.radians(po)+90.),np.cos(np.radians(po)+90.)
-
-            quiveropts = dict(headlength=0, pivot='middle',
-                              scale=5e1, headaxislength=0)
-            plt.axis('equal'); # plt.title('%s overlay (r=gd; b=bf)' %tx)
-            plt.quiver(x,y,gx,gy,color='r',**quiveropts)
-            plt.quiver(x,y,px,py,color='b',alpha=0.5,**quiveropts)
-            # plt.xlim(-1,lx); plt.ylim(-1,ly)
-
         def avg_adj(ar,n): # reshaping even-indexed arrays
             (M,N) = ar.shape
             tt = np.zeros((M-n+1,N-n+1))
@@ -127,25 +136,57 @@ class Main(QMainWindow, Ui_MainWindow):
                 pt = pol[i/2:-i/2,i/2:-i/2]
             gt = grd[i]
             tx = '%s x %s' %(i+1,i+1)
-            
             fig = Figure()
             self.fig_dict[tx] = fig
             self.fg_dict[tx] = [gt,pt]
             self.mplfigs.addItem(tx)
             axf = fig.add_subplot(111)
-            quiv(gt,pt,axf,tx)
+            self.__quiv(self,gt,pt,axf,tx)
 
     def _res(self, item):
-        gd,po = self.fg[0],self.fg[1]
-        print gd.shape, np.nansum(gd)
-        if len(self.allxpoints) > 0:
+        cg,cp = self.fg[0],self.fg[1]
+        
+        if self.x_st >= 0 and self.y_st >= 0:
+            gd = np.pad(cg,((0,2*self.x_st),(0,2*self.y_st)),
+                        mode='constant', constant_values=(np.nan))
+            po = np.pad(cp,((self.x_st,self.x_st),(self.y_st,self.y_st[1])),
+                        mode='constant', constant_values=(np.nan))
+        elif self.x_st < 0 and self.y_st >= 0:
+            gd = np.pad(cg,((self.x_st,self.x_st),(0,2*self.y_st)),
+                        mode='constant', constant_values=(np.nan))
+            po = np.pad(cp,((0,2*self.x_st),(self.y_st,self.y_st[1])),
+                        mode='constant', constant_values=(np.nan))
+        elif self.x_st >=0 and self.y_st < 0:
+            gd = np.pad(cg,((0,2*self.x_st),(self.y_st,self.y_st)),
+                        mode='constant', constant_values=(np.nan))
+            po = np.pad(cp,((self.x_st,self.x_st),(0,2*self.y_st[1])),
+                        mode='constant', constant_values=(np.nan))
+        else:
+            gd = np.pad(cg,((self.x_st,self.x_st),(self.y_st,self.y_st)),
+                        mode='constant', constant_values=(np.nan))
+            po = np.pad(cp,((0,2*self.x_st),(0,2*self.y_st[1])),
+                        mode='constant', constant_values=(np.nan))
+
+        if self.x_st == 0 and self.y_st == 0: pass
+        else:
+            tx = '%s - (%s x %s) shifted' %(str(self.mplfigs.currentItem().text()),
+                                            self.x_st,self.y_st)
+            fig = Figure()
+            self.fig_dict[tx] = fig
+            self.fg_dict[tx] = [gt,pt]
+            self.mplfigs.addItem(tx)
+            axf = fig.add_subplot(111)
+            self.__quiv(gd,pd,axf,tx)
+            
+        
+        if len(self.allxpoints) > 0: # if roi selected
             self.tempxpt,self.tempypt = self.allxpoints,self.allypoints
             old_xd,old_yd = self.dn.m0.shape
             new_xd,new_yd = gd.shape
-            print old_xd,old_yd,new_xd,new_yd
+            
             for i in range(len(self.allxpoints)):
-                self.allxpoints[i] *= new_xd/old_xd
-                self.allypoints[i] *= new_yd/old_yd
+                self.allxpoints[i] *= float(new_xd) / float(old_xd)
+                self.allypoints[i] *= float(new_yd) / float(old_yd)
         
             tp = self.getMask(gd)
         
@@ -154,9 +195,7 @@ class Main(QMainWindow, Ui_MainWindow):
 
         gx,gy = -np.sin(np.radians(gd)),np.cos(np.radians(gd))
         px,py = -np.sin(np.radians(po)+90.),np.cos(np.radians(po)+90.)
-        print np.nansum(gx), np.nansum(px)
-        print np.nansum(gd), np.nansum(tp*1.)
-        print tp[tp==True]
+        
         # +/- 90 doesn't matter
         v_c = vc(v1=np.array([gx,gy]),v2=np.array([px,py]))
         self.rho_c.setText('%3e' %(v_c.corr_c()) )
@@ -174,8 +213,8 @@ class Main(QMainWindow, Ui_MainWindow):
         self.end_point = []
         self.line = None
 
-        self.ax.lines = [] # remove roi
-        self.rmmpl()
+        ## remember to right-click before reset if changed frame
+        self.ax.lines = []
         self.changefig(self.mplfigs.currentItem())
             
     def changefig(self, item):
@@ -187,22 +226,16 @@ class Main(QMainWindow, Ui_MainWindow):
         self.canvas = FigureCanvas(fig)
         self.mplvl.addWidget(self.canvas)
         self.fg = fg
-        print 'addmpl',np.nansum(self.fg), len(self.fg)
+        
         self.ax = self.fig.add_subplot(111)
         self.canvas.draw()
         self.canvas.setFocusPolicy( Qt.ClickFocus )
         self.canvas.setFocus()
-        self.canvas.mpl_connect('key_press_event', self.on_key_press)
         self.canvas.mpl_connect('button_press_event', self.__button_press_callback)
-        
         
     def rmmpl(self,):
         self.mplvl.removeWidget(self.canvas)
         self.canvas.close()
-
-
-    def on_key_press(self, event):
-        print 'you pressed', event.key
 
     def __button_press_callback(self, event):
         if event.inaxes:
@@ -243,63 +276,28 @@ class Main(QMainWindow, Ui_MainWindow):
                 self.ax.add_line(self.line)
                 self.canvas.draw()
                 self.line = None
-
-                tp = self.getMask(self.fg)
-                print tp[tp==True]
-                print np.nansum(tp*1)
-                # if sys.flags.interactive:
-                #     pass
-                # else:
-                #     #figure has to be closed so that code can continue
-                #     plt.close(self.fig)
-                    
-
-    def getMask(self, currentImage):
-        ny, nx = np.shape(currentImage)
+                                    
+    def getMask(self, ci):
+        nx, ny = ci.shape        
         poly_verts = [(self.allxpoints[0], self.allypoints[0])]
         for i in range(len(self.allxpoints)-1, -1, -1):
             poly_verts.append((self.allxpoints[i], self.allypoints[i]))
-
-        # Create vertex coordinates for each grid cell...
-        # (<0,0> is at the top left of the grid in this system)
+        
         x, y = np.meshgrid(np.arange(nx), np.arange(ny))
         x, y = x.flatten(), y.flatten()
         points = np.vstack((x,y)).T
 
         ROIpath = mplPath.Path(poly_verts)
         grid = ROIpath.contains_points(points).reshape((ny,nx))
-        return grid
-                    
-
         
+        return grid
 
 if __name__ == '__main__':
     import sys
     from PyQt4 import QtGui
 
-    
-
-    fig1 = Figure()
-    ax1f1 = fig1.add_subplot(111)
-    ax1f1.plot(np.random.rand(5))
-
-    fig2 = Figure()
-    ax1f2 = fig2.add_subplot(121)
-    ax1f2.plot(np.random.rand(5))
-    ax2f2 = fig2.add_subplot(122)
-    ax2f2.plot(np.random.rand(10))
-
-    fig3 = Figure()
-    ax1f3 = fig3.add_subplot(111)
-    ax1f3.pcolormesh(np.random.rand(20,20))
-
     app = QtGui.QApplication(sys.argv)
     main = Main()
-    
-    # main.addfig('One plot', fig1, np.random.rand(5))
-    # main.addfig('Two plots', fig2, np.random.rand(5))
-    # main.addfig('Pcolormesh', fig3, np.random.rand(5))
-    
     main.show()
     sys.exit(app.exec_())
 

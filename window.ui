@@ -167,8 +167,8 @@
    <widget class="QPushButton" name="calc">
     <property name="geometry">
      <rect>
-      <x>620</x>
-      <y>570</y>
+      <x>640</x>
+      <y>590</y>
       <width>181</width>
       <height>61</height>
      </rect>
@@ -344,8 +344,8 @@
    <widget class="QPushButton" name="res">
     <property name="geometry">
      <rect>
-      <x>660</x>
-      <y>510</y>
+      <x>680</x>
+      <y>550</y>
       <width>91</width>
       <height>41</height>
      </rect>
@@ -362,6 +362,45 @@
      <string>Result</string>
     </property>
    </widget>
+   <widget class="QLabel" name="label">
+    <property name="geometry">
+     <rect>
+      <x>610</x>
+      <y>500</y>
+      <width>191</width>
+      <height>16</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>x-shift         y-shift      (fixed gd)</string>
+    </property>
+   </widget>
+   <widget class="QWidget" name="">
+    <property name="geometry">
+     <rect>
+      <x>610</x>
+      <y>520</y>
+      <width>118</width>
+      <height>26</height>
+     </rect>
+    </property>
+    <layout class="QHBoxLayout" name="horizontalLayout_3">
+     <item>
+      <widget class="QSpinBox" name="xst">
+       <property name="minimum">
+        <number>-99</number>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QSpinBox" name="yst">
+       <property name="minimum">
+        <number>-99</number>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </widget>
    <zorder>mplwindow</zorder>
    <zorder>calc</zorder>
    <zorder>layoutWidget</zorder>
@@ -370,6 +409,9 @@
    <zorder>fetch</zorder>
    <zorder>progressBar</zorder>
    <zorder>res</zorder>
+   <zorder>xst</zorder>
+   <zorder>yst</zorder>
+   <zorder>label</zorder>
   </widget>
  </widget>
  <resources/>
