@@ -152,19 +152,19 @@ class Main(QMainWindow, Ui_MainWindow):
             po = np.pad(cp,((self.x_st,self.x_st),(self.y_st,self.y_st)),
                         mode='constant', constant_values=(np.nan))
         elif self.x_st < 0 and self.y_st >= 0:
-            gd = np.pad(cg,((self.x_st,self.x_st),(0,2*self.y_st)),
+            gd = np.pad(cg,((-self.x_st,-self.x_st),(0,2*self.y_st)),
                         mode='constant', constant_values=(np.nan))
-            po = np.pad(cp,((0,2*self.x_st),(self.y_st,self.y_st)),
+            po = np.pad(cp,((0,-2*self.x_st),(self.y_st,self.y_st)),
                         mode='constant', constant_values=(np.nan))
         elif self.x_st >=0 and self.y_st < 0:
-            gd = np.pad(cg,((0,2*self.x_st),(self.y_st,self.y_st)),
+            gd = np.pad(cg,((0,2*self.x_st),(-self.y_st,-self.y_st)),
                         mode='constant', constant_values=(np.nan))
-            po = np.pad(cp,((self.x_st,self.x_st),(0,2*self.y_st)),
+            po = np.pad(cp,((self.x_st,self.x_st),(0,-2*self.y_st)),
                         mode='constant', constant_values=(np.nan))
         else:
-            gd = np.pad(cg,((self.x_st,self.x_st),(self.y_st,self.y_st)),
+            gd = np.pad(cg,((-self.x_st,-self.x_st),(-self.y_st,-self.y_st)),
                         mode='constant', constant_values=(np.nan))
-            po = np.pad(cp,((0,2*self.x_st),(0,2*self.y_st)),
+            po = np.pad(cp,((0,-2*self.x_st),(0,-2*self.y_st)),
                         mode='constant', constant_values=(np.nan))
 
         if self.x_st == 0 and self.y_st == 0: pass
