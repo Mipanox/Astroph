@@ -94,8 +94,8 @@ class Main(QMainWindow, Ui_MainWindow):
         for n in [m0,m1]:
             fig_ = Figure()
             axf_ = fig_.add_subplot(111)
-            axf_.imshow(n,origin='lower')
-            fig_.colorbar()
+            cax = axf_.imshow(n,origin='lower')
+            fig_.colorbar(cax)
             name = 'moment %s' %i
             self.fig_dict[name] = fig_
             self.fg_dict[name] = n
@@ -141,7 +141,7 @@ class Main(QMainWindow, Ui_MainWindow):
             self.fg_dict[tx] = [gt,pt]
             self.mplfigs.addItem(tx)
             axf = fig.add_subplot(111)
-            self.__quiv(self,gt,pt,axf,tx)
+            self.__quiver(gt,pt,axf,tx)
 
     def _res(self, item):
         cg,cp = self.fg[0],self.fg[1]
@@ -149,22 +149,22 @@ class Main(QMainWindow, Ui_MainWindow):
         if self.x_st >= 0 and self.y_st >= 0:
             gd = np.pad(cg,((0,2*self.x_st),(0,2*self.y_st)),
                         mode='constant', constant_values=(np.nan))
-            po = np.pad(cp,((self.x_st,self.x_st),(self.y_st,self.y_st[1])),
+            po = np.pad(cp,((self.x_st,self.x_st),(self.y_st,self.y_st)),
                         mode='constant', constant_values=(np.nan))
         elif self.x_st < 0 and self.y_st >= 0:
             gd = np.pad(cg,((self.x_st,self.x_st),(0,2*self.y_st)),
                         mode='constant', constant_values=(np.nan))
-            po = np.pad(cp,((0,2*self.x_st),(self.y_st,self.y_st[1])),
+            po = np.pad(cp,((0,2*self.x_st),(self.y_st,self.y_st)),
                         mode='constant', constant_values=(np.nan))
         elif self.x_st >=0 and self.y_st < 0:
             gd = np.pad(cg,((0,2*self.x_st),(self.y_st,self.y_st)),
                         mode='constant', constant_values=(np.nan))
-            po = np.pad(cp,((self.x_st,self.x_st),(0,2*self.y_st[1])),
+            po = np.pad(cp,((self.x_st,self.x_st),(0,2*self.y_st)),
                         mode='constant', constant_values=(np.nan))
         else:
             gd = np.pad(cg,((self.x_st,self.x_st),(self.y_st,self.y_st)),
                         mode='constant', constant_values=(np.nan))
-            po = np.pad(cp,((0,2*self.x_st),(0,2*self.y_st[1])),
+            po = np.pad(cp,((0,2*self.x_st),(0,2*self.y_st)),
                         mode='constant', constant_values=(np.nan))
 
         if self.x_st == 0 and self.y_st == 0: pass
@@ -173,10 +173,10 @@ class Main(QMainWindow, Ui_MainWindow):
                                             self.x_st,self.y_st)
             fig = Figure()
             self.fig_dict[tx] = fig
-            self.fg_dict[tx] = [gt,pt]
+            self.fg_dict[tx] = [gd,po]
             self.mplfigs.addItem(tx)
             axf = fig.add_subplot(111)
-            self.__quiv(gd,pd,axf,tx)
+            self.__quiver(gd,po,axf,tx)
             
         
         if len(self.allxpoints) > 0: # if roi selected
@@ -194,9 +194,9 @@ class Main(QMainWindow, Ui_MainWindow):
             po[tp==False] = np.nan
 
         gx,gy = -np.sin(np.radians(gd)),np.cos(np.radians(gd))
-        px,py = -np.sin(np.radians(po)+90.),np.cos(np.radians(po)+90.)
-        
+        px,py = -np.sin(np.radians(po)),np.cos(np.radians(po))
         # +/- 90 doesn't matter
+        
         v_c = vc(v1=np.array([gx,gy]),v2=np.array([px,py]))
         self.rho_c.setText('%3e' %(v_c.corr_c()) )
         self.rho_h.setText('%3e' %(v_c.corr_h()) )
@@ -216,6 +216,9 @@ class Main(QMainWindow, Ui_MainWindow):
         ## remember to right-click before reset if changed frame
         self.ax.lines = []
         self.changefig(self.mplfigs.currentItem())
+
+        self.xst.setValue(0)
+        self.yst.setValue(0)
             
     def changefig(self, item):
         text = str(item.text())
@@ -278,7 +281,7 @@ class Main(QMainWindow, Ui_MainWindow):
                 self.line = None
                                     
     def getMask(self, ci):
-        nx, ny = ci.shape        
+        ny, nx = ci.shape        
         poly_verts = [(self.allxpoints[0], self.allypoints[0])]
         for i in range(len(self.allxpoints)-1, -1, -1):
             poly_verts.append((self.allxpoints[i], self.allypoints[i]))
