@@ -192,10 +192,13 @@ class Main(QMainWindow, Ui_MainWindow):
         
             gd[tp==False] = np.nan
             po[tp==False] = np.nan
-
+        
         gx,gy = -np.sin(np.radians(gd)),np.cos(np.radians(gd))
         px,py = -np.sin(np.radians(po)),np.cos(np.radians(po))
         # +/- 90 doesn't matter
+
+        overlay = np.sum(~np.isnan(gd) * ~np.isnan(po) * 1.)
+        self.spsize.setText('%d' %(overlay))
         
         v_c = vc(v1=np.array([gx,gy]),v2=np.array([px,py]))
         self.rho_c.setText('%3e' %(v_c.corr_c()) )
