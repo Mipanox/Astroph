@@ -3,6 +3,9 @@ import matplotlib.pyplot as plt
 
 class Vec_Corr(object):
     def __init__(self,v1=np.ones((2,10,10)),n1='n1',v2=np.zeros(0),n2=None,rdn_s=1000):
+        v1[v1==0.] = np.nan
+        v2[v2==0.] = np.nan
+
         self.v1 = v1 # input vector field: 2 x N x M; each for x and y
         self.n1 = n1
         
@@ -27,7 +30,7 @@ class Vec_Corr(object):
         v1_x,v1_y = self.v1[0].flatten(),self.v1[1].flatten()
         v2_x,v2_y = self.v2[0].flatten(),self.v2[1].flatten()
         
-        n = min(np.nansum(v1_x/v1_x),np.nansum(v2_x/v2_x)) 
+        n = np.sum(~np.isnan(v1_x) * ~np.isnan(v2_x) * 1.)
         # number of overlapping points
         
         if n <= 1: return 0. # prevent divide by zero
@@ -52,7 +55,7 @@ class Vec_Corr(object):
         v1_x,v1_y = self.v1[0].flatten(),self.v1[1].flatten()
         v2_x,v2_y = self.v2[0].flatten(),self.v2[1].flatten()
         
-        n = min(np.nansum(v1_x/v1_x),np.nansum(v2_x/v2_x))
+        n = np.sum(~np.isnan(v1_x) * ~np.isnan(v2_x) * 1.)
         
         if n==0: return 0.
         else:
