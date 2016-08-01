@@ -38,8 +38,8 @@ class Vec_Corr(object):
             v2_y[np.isnan(v2_y)]=0.
         
             v_ = np.vstack([v1_x,v1_y,v2_x,v2_y])
-            
-            vv = v_ - v_.mean(axis=1).reshape(4,1) # subtraction of mean
+            v_mean = ( v_.sum(1) / (v_ != 0).sum(1) ).reshape(4,1)
+            vv = v_ - v_mean # subtraction of mean
             vf = np.matrix(vv)
             
             S = vf*vf.T / (n-1)
@@ -64,8 +64,8 @@ class Vec_Corr(object):
             v1_c = v1_x + v1_y * 1j
             v2_c = v2_x + v2_y * 1j
             
-            v1_n = v1_c - v1_c.mean()
-            v2_n = v2_c - v2_c.mean()
+            v1_n = v1_c - v1_c.sum() / (v1_c != 0).sum() # non-zero mean
+            v2_n = v2_c - v2_c.sum() / (v2_c != 0).sum()
             
             sig_1 = np.sqrt(abs(v1_n**2).sum() / n)
             sig_2 = np.sqrt(abs(v2_n**2).sum() / n)
